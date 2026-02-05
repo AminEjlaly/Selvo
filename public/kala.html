@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+  <meta charset="UTF-8">
+  <title>لیست کالاها</title>
+</head>
+<body>
+  <h1>لیست کالاها</h1>
+  <table border="1" id="kalaTable">
+    <tr>
+      <th>کد کالا</th>
+      <th>نام کالا</th>
+      <th>تولید کننده</th>
+    </tr>
+  </table>
+
+  <script>
+    async function loadKala() {
+      const response = await fetch('/Kala'); // میره به API
+      const data = await response.json();
+
+      const table = document.getElementById('kalaTable');
+
+      data.forEach(item => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${item.Code}</td>
+          <td>${item.Name}</td>
+          <td>${item.MoenName}</td>
+        `;
+        table.appendChild(row);
+      });
+    }
+
+    loadKala();
+  </script>
+</body>
+</html>
