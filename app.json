@@ -93,6 +93,9 @@
         "UIBackgroundModes": [
           "location",
           "fetch",
+          "remote-notification",
+          "location",
+          "fetch",
           "remote-notification"
         ],
         "NSAllowsArbitraryLoads": true,
@@ -103,7 +106,8 @@
               "NSExceptionAllowsInsecureHTTPLoads": true
             }
           }
-        }
+        },
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
