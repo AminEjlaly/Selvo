@@ -19,6 +19,7 @@ import { CartContext } from "../CartContext";
 import FullscreenImageModal from "../components/FullscreenImageModal";
 import ModalProduct from "../components/ModalProduct";
 import ProductCard from "../components/ProductCard";
+import { getCacheStatus, getProductsWithCache } from '../services/productCacheService';
 import styles from "../styles/ProductListScreen.styles";
 
 const { width, height } = Dimensions.get("window");
@@ -113,7 +114,6 @@ export default function ProductListScreen({ route, navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [pricingInfo, setPricingInfo] = useState(null);
 
-  // State برای وضعیت manfi
   const [hasManfiAccess, setHasManfiAccess] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -122,9 +122,11 @@ export default function ProductListScreen({ route, navigation }) {
   const [slaveCount, setSlaveCount] = useState("");
   const [totalCount, setTotalCount] = useState(0);
 
-  // 🔥 State های Modal تصویر فول‌اسکرین (اینجا باید باشه!)
   const [fullscreenImageVisible, setFullscreenImageVisible] = useState(false);
   const [fullscreenImageUrl, setFullscreenImageUrl] = useState(null);
+
+  // نشان‌دهنده اینکه داده از کش اومده
+  const [isFromCache, setIsFromCache] = useState(false);
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const pullAnim = useRef(new Animated.Value(0)).current;
@@ -145,27 +147,59 @@ export default function ProductListScreen({ route, navigation }) {
     uniqueProducts: cart.length,
   };
 
-  // دریافت وضعیت manfi هنگام لود صفحه
+  // بررسی وضعیت manfi
   useEffect(() => {
     const checkManfiAccess = async () => {
       try {
         let manfiStatus = await getStoredManfiStatus();
-
         try {
           manfiStatus = await refreshManfiStatus();
-        } catch (refreshError) {
-        }
-
+        } catch (refreshError) {}
         setHasManfiAccess(manfiStatus);
-
       } catch (error) {
         console.log('❌ خطا در بررسی وضعیت manfi:', error);
         setHasManfiAccess(false);
       }
     };
-
     checkManfiAccess();
   }, []);
+
+  const applyPricingToProducts = (productsList, pricingData) => {
+    if (!productsList || productsList.length === 0) return productsList;
+
+    return productsList.map(product => {
+      const displayPrice =
+        product.CustomerPrice ||
+        product.Price ||
+        (pricingData?.priceColumn === 'PriceF5' ? product.PriceF5 :
+          pricingData?.priceColumn === 'PriceF4' ? product.PriceF4 :
+            pricingData?.priceColumn === 'PriceF3' ? product.PriceF3 :
+              pricingData?.priceColumn === 'PriceF2' ? product.PriceF2 :
+                product.PriceF1);
+
+      return {
+        ...product,
+        Price: displayPrice,
+        DisplayPrice: displayPrice
+      };
+    });
+  };
+
+  const filterByGroup = (productsList) => {
+    if (!productsList) return [];
+
+    if (mainGroupCode && subGroupCode) {
+      return productsList.filter(p =>
+        String(p.MainGroupCode) === String(mainGroupCode) &&
+        String(p.SubGroupCode) === String(subGroupCode)
+      );
+    } else if (mainGroupCode) {
+      return productsList.filter(p =>
+        String(p.MainGroupCode) === String(mainGroupCode)
+      );
+    }
+    return productsList;
+  };
 
   const fetchProducts = async (isRefresh = false) => {
     try {
@@ -180,12 +214,11 @@ export default function ProductListScreen({ route, navigation }) {
         setLoading(true);
       }
 
-      let data;
       let productsData = [];
       let pricingData = null;
 
       if (isDemoMode) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 800));
         productsData = demoProducts;
         pricingData = {
           buyerCode: buyerCode,
@@ -193,8 +226,25 @@ export default function ProductListScreen({ route, navigation }) {
           priceColumn: 'PriceF1',
           priceLabel: 'PriceF1'
         };
+        setIsFromCache(false);
       } else {
-        const result = await getProducts(mainGroupCode, subGroupCode, buyerCode);
+        const groupKey = `${mainGroupCode || 'all'}_${subGroupCode || 'all'}_${buyerCode || 'nobuyer'}`;
+
+        // وضعیت کش رو لاگ کن
+        const cacheStatus = await getCacheStatus(groupKey);
+        if (cacheStatus.exists) {
+          if (cacheStatus.isPriceValid) {
+            console.log(`📦 کش قیمت معتبر: ${cacheStatus.count} کالا (${cacheStatus.priceExpiresIn} دقیقه)`);
+          } else if (cacheStatus.isValid) {
+            console.log(`📦 کش اطلاعات معتبر: ${cacheStatus.count} کالا - قیمت‌ها منقضی`);
+          }
+        }
+
+        const result = await getProductsWithCache(
+          () => getProducts(mainGroupCode, subGroupCode, buyerCode),
+          groupKey
+        );
+
         productsData = result.products || [];
         pricingData = result.pricing || {
           buyerCode: buyerCode,
@@ -202,63 +252,42 @@ export default function ProductListScreen({ route, navigation }) {
           priceColumn: 'PriceF1',
           priceLabel: 'PriceF1'
         };
+
+        // فقط اگر قیمت‌ها قدیمی هستن پیام بده
+        if (result._fromCache && result._pricesStale) {
+          Alert.alert(
+            '📦 حالت آفلاین',
+            'سرور در دسترس نیست. قیمت‌ها ممکن است به‌روز نباشند.',
+            [{ text: 'متوجه شدم' }]
+          );
+          setIsFromCache(true);
+        } else if (result._fromCache) {
+          // از کش معتبر - پیام نشون نده فقط لاگ
+          console.log('✅ داده از کش معتبر لود شد');
+          setIsFromCache(false);
+        } else {
+          setIsFromCache(false);
+        }
       }
 
-      const allProducts = Array.isArray(productsData) ? productsData : [];
+      // فیلتر بر اساس گروه
+      const filtered = filterByGroup(
+        Array.isArray(productsData) ? productsData : []
+      );
 
-      let filtered = allProducts;
+      // اعمال قیمت‌گذاری
+      const withPrices = applyPricingToProducts(filtered, pricingData);
 
-      if (mainGroupCode && subGroupCode) {
-        filtered = allProducts.filter((p) =>
-          String(p.MainGroupCode) === String(mainGroupCode) &&
-          String(p.SubGroupCode) === String(subGroupCode)
-        );
-      } else if (mainGroupCode) {
-        filtered = allProducts.filter((p) =>
-          String(p.MainGroupCode) === String(mainGroupCode)
-        );
-      }
-
-      if (filtered.length > 0) {
-        const productsWithCorrectPrice = filtered.map(product => {
-          const displayPrice = product.CustomerPrice || product.Price ||
-            (pricingData?.priceColumn === 'PriceF5' ? product.PriceF5 :
-              pricingData?.priceColumn === 'PriceF4' ? product.PriceF4 :
-                pricingData?.priceColumn === 'PriceF3' ? product.PriceF3 :
-                  pricingData?.priceColumn === 'PriceF2' ? product.PriceF2 :
-                    product.PriceF1);
-
-          return {
-            ...product,
-            Price: displayPrice,
-            DisplayPrice: displayPrice
-          };
-        });
-
-        setProducts(productsWithCorrectPrice);
-        setFilteredProducts(productsWithCorrectPrice);
-      } else {
-        setProducts(filtered);
-        setFilteredProducts(filtered);
-      }
-
+      setProducts(withPrices);
+      setFilteredProducts(withPrices);
       setPricingInfo(pricingData);
       setError(null);
 
     } catch (err) {
-      let filtered = demoProducts;
+      console.log('❌ خطا در fetchProducts:', err.message);
 
-      if (mainGroupCode && subGroupCode) {
-        filtered = demoProducts.filter((p) =>
-          String(p.MainGroupCode) === String(mainGroupCode) &&
-          String(p.SubGroupCode) === String(subGroupCode)
-        );
-      } else if (mainGroupCode) {
-        filtered = demoProducts.filter((p) =>
-          String(p.MainGroupCode) === String(mainGroupCode)
-        );
-      }
-
+      // fallback به دموی محلی
+      const filtered = filterByGroup(demoProducts);
       setProducts(filtered);
       setFilteredProducts(filtered);
       setPricingInfo({
@@ -268,7 +297,9 @@ export default function ProductListScreen({ route, navigation }) {
         priceLabel: 'PriceF1'
       });
       setIsDemoMode(true);
+      setIsFromCache(false);
       setError("خطا در بارگذاری داده‌ها. از حالت نمایشی استفاده می‌شود.");
+
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -295,11 +326,9 @@ export default function ProductListScreen({ route, navigation }) {
       useNativeDriver: false,
       listener: (event) => {
         const offsetY = event.nativeEvent.contentOffset.y;
-
         if (offsetY < -150 && !refreshing) {
           onRefresh();
         }
-
         if (offsetY < -50 && !refreshing) {
           const pullDistance = Math.min(Math.abs(offsetY + 50) / 2, 60);
           pullAnim.setValue(pullDistance);
@@ -319,7 +348,6 @@ export default function ProductListScreen({ route, navigation }) {
         console.warn("Error checking demo mode:", err.message);
       }
     };
-
     checkDemoMode();
   }, [isDemoModeParam]);
 
@@ -327,6 +355,7 @@ export default function ProductListScreen({ route, navigation }) {
     fetchProducts();
   }, [mainGroupCode, subGroupCode, isDemoMode, buyerCode]);
 
+  // فیلتر جستجو
   useEffect(() => {
     const filtered = products.filter((p) => {
       const matchesCode =
@@ -340,6 +369,7 @@ export default function ProductListScreen({ route, navigation }) {
     setFilteredProducts(filtered);
   }, [searchCode, searchName, products]);
 
+  // محاسبه تعداد کل
   useEffect(() => {
     if (!selectedProduct) return;
     const mbnaVal = parseFloat(mbnaCount) || 0;
@@ -350,9 +380,7 @@ export default function ProductListScreen({ route, navigation }) {
 
   const openModal = (item) => {
     setSelectedProduct(item);
-
     const existingCartItem = cart.find(cartItem => cartItem.Code === item.Code);
-
     if (existingCartItem) {
       setMbnaCount(existingCartItem.countMbna?.toString() || "0");
       setSlaveCount(existingCartItem.countSlave?.toString() || "0");
@@ -362,27 +390,21 @@ export default function ProductListScreen({ route, navigation }) {
       setSlaveCount("");
       setTotalCount(0);
     }
-
     setModalVisible(true);
   };
 
-  // 🔥 Handler برای باز کردن تصویر فول‌اسکرین
   const handleImagePress = (imageUrl) => {
-    console.log('🖼️ باز کردن تصویر فول‌اسکرین:', imageUrl);
     setFullscreenImageUrl(imageUrl);
     setFullscreenImageVisible(true);
   };
 
-  // 🔥 Handler برای بستن تصویر فول‌اسکرین
   const handleCloseFullscreen = () => {
-    console.log('✕ بستن تصویر فول‌اسکرین');
     setFullscreenImageVisible(false);
     setTimeout(() => {
       setFullscreenImageUrl(null);
     }, 300);
   };
 
-  // تابع handleAddToCart با پشتیبانی manfi
   const handleAddToCart = () => {
     if (!selectedProduct) return;
 
@@ -403,7 +425,6 @@ export default function ProductListScreen({ route, navigation }) {
     }
 
     const stock = parseFloat(selectedProduct.Mojoodi) || 0;
-
     if (!hasManfiAccess && totalCount > stock) {
       Alert.alert(
         "خطای موجودی",
@@ -413,7 +434,10 @@ export default function ProductListScreen({ route, navigation }) {
       return;
     }
 
-    const productPrice = parseFloat(selectedProduct.Price) || parseFloat(selectedProduct.PriceF1) || 0;
+    const productPrice =
+      parseFloat(selectedProduct.Price) ||
+      parseFloat(selectedProduct.PriceF1) ||
+      0;
 
     addToCart({
       ...selectedProduct,
@@ -434,12 +458,10 @@ export default function ProductListScreen({ route, navigation }) {
       inputRange: [0, 60],
       outputRange: ['0deg', '180deg'],
     });
-
     const opacity = pullAnim.interpolate({
       inputRange: [0, 30, 60],
       outputRange: [0, 0.5, 1],
     });
-
     const translateY = pullAnim.interpolate({
       inputRange: [0, 60],
       outputRange: [-10, 10],
@@ -450,13 +472,7 @@ export default function ProductListScreen({ route, navigation }) {
         <Animated.View
           style={[
             customStyles.refreshIndicator,
-            {
-              opacity,
-              transform: [
-                { translateY },
-                { rotate }
-              ]
-            }
+            { opacity, transform: [{ translateY }, { rotate }] }
           ]}
         >
           {refreshing ? (
@@ -482,9 +498,7 @@ export default function ProductListScreen({ route, navigation }) {
           <View style={styles.loadingCard}>
             <ActivityIndicator size="large" color="#1e3a8a" />
             <Text style={styles.loadingText}>
-              {isDemoMode
-                ? "بارگذاری داده‌های نمایشی..."
-                : "در حال بارگذاری کالاها..."}
+              {isDemoMode ? "بارگذاری داده‌های نمایشی..." : "در حال بارگذاری کالاها..."}
             </Text>
             {buyerCode && (
               <Text style={customStyles.loadingSubtext}>
@@ -505,10 +519,7 @@ export default function ProductListScreen({ route, navigation }) {
             <Text style={styles.emptyEmoji}>⚠️</Text>
             <Text style={styles.emptyTitle}>خطا در بارگذاری</Text>
             <Text style={styles.emptyText}>{error}</Text>
-            <TouchableOpacity
-              style={customStyles.refreshButton}
-              onPress={onRefresh}
-            >
+            <TouchableOpacity style={customStyles.refreshButton} onPress={onRefresh}>
               <Text style={customStyles.refreshButtonText}>بارگذاری مجدد</Text>
             </TouchableOpacity>
           </View>
@@ -525,12 +536,7 @@ export default function ProductListScreen({ route, navigation }) {
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       <View style={styles.container} direction="rtl">
         <Animated.View
-          style={[
-            styles.header,
-            {
-              transform: [{ translateY: headerTranslateY }],
-            },
-          ]}
+          style={[styles.header, { transform: [{ translateY: headerTranslateY }] }]}
         >
           <View style={styles.headerContent}>
             <Text style={styles.headerTitle}>{pageTitle}</Text>
@@ -541,6 +547,11 @@ export default function ProductListScreen({ route, navigation }) {
               {isDemoMode && (
                 <View style={styles.demoBadge}>
                   <Text style={styles.demoBadgeText}>نمایشی</Text>
+                </View>
+              )}
+              {isFromCache && (
+                <View style={[styles.demoBadge, { backgroundColor: '#f59e0b' }]}>
+                  <Text style={styles.demoBadgeText}>آفلاین</Text>
                 </View>
               )}
             </View>
@@ -564,14 +575,10 @@ export default function ProductListScreen({ route, navigation }) {
                 onChangeText={setSearchName}
               />
             </View>
-
             {(searchCode || searchName) && (
               <TouchableOpacity
                 style={styles.clearSearchButton}
-                onPress={() => {
-                  setSearchCode("");
-                  setSearchName("");
-                }}
+                onPress={() => { setSearchCode(""); setSearchName(""); }}
               >
                 <Text style={styles.clearSearchText}>پاک کردن جستجو</Text>
               </TouchableOpacity>
@@ -591,10 +598,7 @@ export default function ProductListScreen({ route, navigation }) {
                   ? "لطفاً جستجوی دیگری امتحان کنید"
                   : "هیچ کالایی در این گروه وجود ندارد"}
               </Text>
-              <TouchableOpacity
-                style={customStyles.refreshButton}
-                onPress={onRefresh}
-              >
+              <TouchableOpacity style={customStyles.refreshButton} onPress={onRefresh}>
                 <Text style={customStyles.refreshButtonText}>بارگذاری مجدد</Text>
               </TouchableOpacity>
             </View>
@@ -676,7 +680,6 @@ export default function ProductListScreen({ route, navigation }) {
           />
         )}
 
-        {/* 🔥 Modal تصویر فول‌اسکرین */}
         <FullscreenImageModal
           visible={fullscreenImageVisible}
           imageUrl={fullscreenImageUrl}
@@ -706,10 +709,7 @@ const customStyles = {
     paddingVertical: 12,
     borderRadius: 25,
     shadowColor: '#1e3a8a',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 8,
@@ -747,10 +747,7 @@ const customStyles = {
     borderRadius: 12,
     marginTop: 16,
     shadowColor: '#1e3a8a',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
