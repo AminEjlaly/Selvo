@@ -146,10 +146,7 @@ const HomeScreen = ({ navigation, route }) => {
   };
 
   const toggleCalendar = async () => {
-    // 🔥 هنگام باز کردن تقویم هم لوکیشن ثبت کن
-    if (!calendarVisible) {
-      await sendLocationOnMenuClick('تقویم');
-    }
+   
     
     if (calendarVisible) {
       Animated.parallel([
@@ -199,7 +196,6 @@ const HomeScreen = ({ navigation, route }) => {
 
   // 🔥 هندل کلیک روی سبد خرید با ثبت لوکیشن
   const handleCartPress = async () => {
-    await sendLocationOnMenuClick('سبد خرید');
     navigation.navigate('Cart');
   };
 

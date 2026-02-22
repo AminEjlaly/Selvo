@@ -28,9 +28,9 @@ export const testServerConnection = async (ip, port) => {
 };
 export const APP_CONFIG = {
   // 🔥 فلگ اصلی برای فعال/غیرفعال کردن GPS
-  LOCATION_TRACKING_ENABLED: false, // true = فعال، false = غیرفعال
+  LOCATION_TRACKING_ENABLED: true, // true = فعال، false = غیرفعال
   
   // تنظیمات اضافی
   LOCATION_INTERVAL_MS: 5 * 60 * 1000, // 5 دقیقه
-  MANDATORY_LOCATION_ON_LOGIN: false, // اجباری بودن GPS هنگام ورود
+  MANDATORY_LOCATION_ON_LOGIN: true, // اجباری بودن GPS هنگام ورود
 };

@@ -246,29 +246,28 @@ const visitorInfo = {
 
   // ✅ هندل موفقیت لاگین
   // ✅ هندل موفقیت لاگین
-  const handleLoginSuccess = async () => {  // پارامتر userData را حذف کنید
-    try {
-      setIsLoggedIn(true);
+ const handleLoginSuccess = async (userData) => {  // پارامتر رو برگردون
+  try {
+    setIsLoggedIn(true);
 
-      // 🔥 مستقیم از AsyncStorage اطلاعات کاربر را بخوان
-      const userData = await AsyncStorage.getItem("user");
-      const token = await AsyncStorage.getItem("token");
+    // از پارامتر استفاده کن، نه فقط AsyncStorage
+    const user = userData || JSON.parse(await AsyncStorage.getItem("user"));
+    if (!user) { setIsLoggedIn(false); return; }
 
-      console.log('🔑 Login Success - Token:', token ? 'exists' : 'missing');
-      console.log('👤 User data from storage:', userData);
+    setUser(user);
 
-      if (!userData) {
-        console.error('❌ No user data in storage!');
-        setIsLoggedIn(false);
-        return;
-      }
+    let userType = 'seller';
+    let buyerCode = null;
 
-      const user = JSON.parse(userData);
-      setUser(user);
+    if (user.role === 'delivery' || user.UserType === 'delivery') {
+      userType = 'delivery';
+    } else if (user.role === 'customer' || user.UserType === 'customer') {
+      userType = 'customer';
+      buyerCode = user.NOF || user.id || null;
+    }
 
-      // تشخیص نوع کاربر
-      let userType = 'seller';
-      let buyerCode = null;
+    setUserType(userType);
+    setBuyerCode(buyerCode);
 
       if (user.role === 'delivery' || user.UserType === 'delivery') {
         userType = 'delivery';

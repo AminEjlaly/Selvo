@@ -397,7 +397,25 @@ export const getLastSentTime = () => {
   console.log(`📍 زمان آخرین ارسال: ${lastSent > 0 ? new Date(lastSent).toLocaleTimeString() : 'هنوز ارسالی نداشته'}`);
   return lastSent;
 };
+let cachedPosition = null;
+let cacheTime = 0;
+const CACHE_DURATION = 30000; // 30 ثانیه
 
+export const getCachedPosition = async () => {
+  if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) return null;
+  
+  const now = Date.now();
+  if (cachedPosition && (now - cacheTime) < CACHE_DURATION) {
+    console.log('📍 استفاده از موقعیت کش شده');
+    return cachedPosition;
+  }
+  
+  console.log('📍 دریافت موقعیت جدید...');
+  const position = await getCurrentPosition();
+  cachedPosition = position;
+  cacheTime = now;
+  return position;
+};
 // --- دریافت اطلاعات لوکیشن ---
 export const getLocationInfo = () => {
    if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) {

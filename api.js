@@ -2945,4 +2945,4 @@ export const refreshManfiStatus = async () => {
     console.log('❌ خطا در بروزرسانی وضعیت manfi:', error);
     return false;
   }
-};
+}
