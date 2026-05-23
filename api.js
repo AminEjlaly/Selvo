@@ -306,8 +306,8 @@ export const getSubGroups = async (mainGroupCode) => {
 
 // ==================== API کالاها با قیمت مشتری ====================
 
-// --- گرفتن کالاها (با فیلتر اختیاری گروه و buyerCode) ---
-export const getProducts = async (mainGroup = null, subGroup = null, buyerCode = null) => {
+// --- گرفتن کالاها (با فیلتر اختیاری گروه و buyerCode و kodAnbar) ---
+export const getProducts = async (mainGroup = null, subGroup = null, buyerCode = null, kodAnbar = 1) => {
   try {
     const headers = await getAuthHeaders();
     const baseUrl = await getServerUrl();
@@ -318,16 +318,29 @@ export const getProducts = async (mainGroup = null, subGroup = null, buyerCode =
     if (mainGroup) params.push(`mainGroup=${mainGroup}`);
     if (subGroup) params.push(`subGroup=${subGroup}`);
     if (buyerCode) params.push(`buyerCode=${buyerCode}`);
+    if (kodAnbar) params.push(`kodAnbar=${kodAnbar}`); // 🔥 اضافه شده
+    
+    // 🔥 حذف limit - بدون محدودیت
+    // params.push(`limit=1000`); 
     
     if (params.length > 0) {
       url += `?${params.join('&')}`;
     }
+    
+    console.log('📡 درخواست کالاها:', { url, mainGroup, subGroup, kodAnbar });
+    
     const res = await fetch(url, { headers });
     const result = await res.json();
 
     if (!res.ok || !result.success) {
       throw new Error(result.message || 'خطا در دریافت اطلاعات کالاها');
     }
+
+    console.log('✅ کالاها دریافت شد:', {
+      total: result.count,
+      kodAnbar: result.filters?.kodAnbar,
+      manfiAccess: result.filters?.manfiAccess
+    });
 
     const products = result.data || [];
     const images = await getProductImages();
@@ -336,7 +349,7 @@ export const getProducts = async (mainGroup = null, subGroup = null, buyerCode =
       products: products.map(p => ({
         ...p,
         imageUrl: images[p.Code] || null,
-        Price: p.CustomerPrice || p.PriceF1, // استفاده از CustomerPrice
+        Price: p.CustomerPrice || p.PriceF1,
         PriceF1: p.PriceF1,
         PriceF2: p.PriceF2,
         PriceF3: p.PriceF3,

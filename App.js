@@ -48,7 +48,9 @@ import SideMenu from "./components/MenuItems";
 import styles from "./styles/App.styles";
 
 const Stack = createStackNavigator();
-
+const APP_CONFIG = {
+  LOCATION_TRACKING_ENABLED: true,
+};
 // Error Boundary
 class AppErrorBoundary extends React.Component {
   state = { hasError: false };
@@ -146,87 +148,56 @@ export default function App() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);
+// ✅ بررسی وضعیت لاگین و دریافت اطلاعات کاربر
+useEffect(() => {
+  const checkAuthStatus = async () => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      const userData = await AsyncStorage.getItem("user");
 
-  // ✅ بررسی وضعیت لاگین و دریافت اطلاعات کاربر
-  useEffect(() => {
-    const checkAuthStatus = async () => {
-      try {
-        const token = await AsyncStorage.getItem("token");
-        const userData = await AsyncStorage.getItem("user");
+      if (token && userData) {
+        const user = JSON.parse(userData);
 
-        if (token && userData) {
-          const user = JSON.parse(userData);
+        // تشخیص نوع کاربر
+        let userType = 'seller';
+        let buyerCode = null;
 
-          // تشخیص نوع کاربر
-          let userType = 'seller';
-          let buyerCode = null;
-
-          if (user.role === 'delivery' || user.UserType === 'delivery') {
-            userType = 'delivery';
-          } else if (user.role === 'customer' || user.UserType === 'customer') {
-            userType = 'customer';
-            buyerCode = user.NOF || user.id || null;
-          }
-
-          setIsLoggedIn(true);
-          setUser(user);
-          setUserType(userType);
-          setBuyerCode(buyerCode);
-
-          console.log('👤 Initial User Info:', {
-            name: user.NameF || user.name,
-            type: userType,
-            buyerCode: buyerCode,
-            NOF: user.NOF,
-            id: user.id
-          });
-
-          // 🔥 اگر کاربر از قبل لاگین بود، سرویس لوکیشن را شروع کن
-          if (userType === 'seller' || userType === 'delivery') {
-            setTimeout(async () => {
-              try {
-                console.log('📍 Starting location service for existing session...');
-const visitorInfo = {
-  VisitorCode: user.userId?.toString() ||  // 🔥 این را اضافه کنید
-              user.id?.toString() || 
-              user.NOF?.toString() || 
-              user.UserID?.toString() ||
-              'unknown',
-  VisitorName: user.NameF || 
-              user.name || 
-              user.FullName || 
-              'Unknown User'
-};
-
-                console.log('📍 VisitorInfo for existing session:', visitorInfo);
-
-                // ذخیره visitor info
-                await AsyncStorage.setItem('visitor_info', JSON.stringify(visitorInfo));
-
-                // شروع ارسال خودکار
-                await startAutoSendLocation(visitorInfo, {
-                  intervalMs: 60000,
-                  minInterval: 10000
-                });
-
-                console.log('✅ Location service started for existing session');
-              } catch (locationError) {
-                console.warn('⚠️ Failed to start location service for existing session:', locationError.message);
-              }
-            }, 2000); // 2 ثانیه تاخیر برای اطمینان
-          }
+        if (user.role === 'delivery' || user.UserType === 'delivery') {
+          userType = 'delivery';
+        } else if (user.role === 'customer' || user.UserType === 'customer') {
+          userType = 'customer';
+          buyerCode = user.NOF || user.id || null;
         }
-      } catch (err) {
-        console.warn("⚠️ Auth check warning:", err.message);
-      } finally {
-        setLoading(false);
+
+        setIsLoggedIn(true);
+        setUser(user);
+        setUserType(userType);
+        setBuyerCode(buyerCode);
+
+        console.log('👤 Initial User Info:', {
+          name: user.NameF || user.name,
+          type: userType,
+          buyerCode: buyerCode,
+          NOF: user.NOF,
+          id: user.id
+        });
+
+        // ❌ حذف کامل این بخش - سرویس لوکیشن نباید اینجا شروع بشه
+        // این قسمت باعث میشه قبل از لاگین واقعی، لوکیشن ثبت بشه
+        
+        // 🔥 فقط لاگ بزن که کاربر از قبل لاگین بوده
+        console.log('✅ User already logged in, location service will start after navigation');
+
       }
-    };
+    } catch (err) {
+      console.warn("⚠️ Auth check warning:", err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    checkAuthStatus();
-  }, []);
-
-
+  checkAuthStatus();
+}, []);
   // ✅ انیمیشن دکمه منو
   useEffect(() => {
     if (menuOpen) {
@@ -245,14 +216,16 @@ const visitorInfo = {
   }, [menuOpen]);
 
   // ✅ هندل موفقیت لاگین
-  // ✅ هندل موفقیت لاگین
- const handleLoginSuccess = async (userData) => {  // پارامتر رو برگردون
+const handleLoginSuccess = async (userData) => {
   try {
     setIsLoggedIn(true);
 
     // از پارامتر استفاده کن، نه فقط AsyncStorage
     const user = userData || JSON.parse(await AsyncStorage.getItem("user"));
-    if (!user) { setIsLoggedIn(false); return; }
+    if (!user) { 
+      setIsLoggedIn(false); 
+      return; 
+    }
 
     setUser(user);
 
@@ -269,80 +242,71 @@ const visitorInfo = {
     setUserType(userType);
     setBuyerCode(buyerCode);
 
-      if (user.role === 'delivery' || user.UserType === 'delivery') {
-        userType = 'delivery';
-      } else if (user.role === 'customer' || user.UserType === 'customer') {
-        userType = 'customer';
-        buyerCode = user.NOF || user.id || null;
+    console.log('✅ User Info Loaded:', {
+      name: user.NameF || user.name,
+      type: userType,
+      buyerCode: buyerCode,
+      NOF: user.NOF,
+      id: user.id
+    });
+
+    setMenuOpen(false);
+
+    // 🔥 شروع سرویس لوکیشن فقط برای فروشنده و تحویل‌دار
+    if (APP_CONFIG.LOCATION_TRACKING_ENABLED && 
+        (userType === 'seller' || userType === 'delivery')) {
+      try {
+        console.log('📍 Starting location service after successful login...');
+
+        const visitorInfo = {
+          VisitorCode: user.userId?.toString() || 
+                      user.id?.toString() || 
+                      user.NOF?.toString() || 
+                      user.UserID?.toString() ||
+                      'unknown',
+          VisitorName: user.NameF || 
+                      user.name || 
+                      user.FullName || 
+                      'Unknown User'
+        };
+
+        console.log('📍 VisitorInfo:', visitorInfo);
+
+        // ذخیره visitor info
+        await AsyncStorage.setItem('visitor_info', JSON.stringify(visitorInfo));
+
+        // شروع ارسال خودکار
+        await startAutoSendLocation(visitorInfo, {
+          intervalMs: 60000, // هر 1 دقیقه
+          minInterval: 10000
+        });
+
+        console.log('✅ Location service started successfully after login');
+
+        // تست بعد از 2 دقیقه
+        setTimeout(() => {
+          console.log('📍 Test after 2 minutes...');
+          try {
+            const running = isAutoSendRunning();
+            const lastTime = getLastSentTime();
+            const timeSince = Date.now() - lastTime;
+            console.log(`📍 Status: ${running ? 'running' : 'stopped'}`);
+            console.log(`📍 Last sent: ${Math.floor(timeSince / 1000)} seconds ago`);
+          } catch (error) {
+            console.log('❌ Error checking status:', error.message);
+          }
+        }, 120000);
+
+      } catch (locationError) {
+        console.warn('⚠️ Failed to start location service:', locationError.message);
       }
-
-      setUserType(userType);
-      setBuyerCode(buyerCode);
-
-      console.log('✅ User Info Loaded:', {
-        name: user.NameF || user.name,
-        type: userType,
-        buyerCode: buyerCode,
-        NOF: user.NOF,
-        id: user.id
-      });
-
-      setMenuOpen(false);
-
-      // 🔥 شروع سرویس لوکیشن برای فروشنده و تحویل‌دار
-      if (userType === 'seller' || userType === 'delivery') {
-        try {
-          console.log('📍 Starting location service...');
-
- const visitorInfo = {
-  VisitorCode: user.userId?.toString() ||  // 🔥 این را اضافه کنید
-              user.id?.toString() || 
-              user.NOF?.toString() || 
-              user.UserID?.toString() ||
-              'unknown',
-  VisitorName: user.NameF || 
-              user.name || 
-              user.FullName || 
-              'Unknown User'
-};
-
-
-          // ذخیره visitor info
-          await AsyncStorage.setItem('visitor_info', JSON.stringify(visitorInfo));
-
-          // شروع ارسال خودکار
-          await startAutoSendLocation(visitorInfo, {
-            intervalMs: 60000, // هر 1 دقیقه
-            minInterval: 10000
-          });
-
-          console.log('✅ Location service started successfully');
-
-          // تست بعد از 2 دقیقه
-          setTimeout(() => {
-            console.log('📍 Test after 2 minutes...');
-            try {
-              const running = isAutoSendRunning();
-              const lastTime = getLastSentTime();
-              const timeSince = Date.now() - lastTime;
-              console.log(`📍 Status: ${running ? 'running' : 'stopped'}`);
-              console.log(`📍 Last sent: ${Math.floor(timeSince / 1000)} seconds ago`);
-            } catch (error) {
-              console.log('❌ Error checking status:', error.message);
-            }
-          }, 120000);
-
-        } catch (locationError) {
-          console.warn('⚠️ Failed to start location service:', locationError.message);
-        }
-      }
-
-    } catch (err) {
-      console.warn("⚠️ Login success warning:", err.message);
-      setIsLoggedIn(false);
     }
-  };
 
+  } catch (err) {
+    console.warn("⚠️ Login success warning:", err.message);
+    setIsLoggedIn(false);
+  }
+};
   // ✅ هندل خروج
   const handleLogout = async () => {
     try {

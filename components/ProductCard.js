@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native';
 import { getServerUrl } from '../config';
@@ -23,6 +24,18 @@ export default function ProductCard({ item, onPress, onImagePress, isDemo }) {
     fetchServerUrl();
   }, []);
 
+// داخل useEffect بعد از getServerUrl:
+const getCachedImage = async (url) => {
+  try {
+    const cached = await AsyncStorage.getItem(`img_cache_${url}`);
+    if (cached) return cached;
+    // ذخیره URL (نه base64) برای FastImage یا Image معمولی
+    await AsyncStorage.setItem(`img_cache_${url}`, url);
+    return url;
+  } catch {
+    return url;
+  }
+};
   const getCorrectImageUrl = () => {
     if (!item.imageUrl || !serverBaseUrl) return null;
     
@@ -181,7 +194,10 @@ export default function ProductCard({ item, onPress, onImagePress, isDemo }) {
 
         <View style={styles.priceContainer}>
           <Text style={styles.priceLabel}>قیمت</Text>
-          <Text style={styles.price}>
+          <Text style={styles.price}
+  numberOfLines={1}
+  adjustsFontSizeToFit={true}
+  minimumFontScale={0.5}>
             {item.Price ? parseInt(item.Price).toLocaleString() : '۰'}
           </Text>
         </View>

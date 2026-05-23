@@ -22,8 +22,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import CustomerPasswordModal from '../components/CustomerPasswordModal';
 import { APP_CONFIG } from '../config';
 import {
-  saveVisitorInfo,
-  startAutoSendLocation,
   stopAutoSendLocation
 } from '../services/locationService';
 import mandatoryLocationService from '../services/mandatoryLocationService';
@@ -213,37 +211,6 @@ export default function LoginScreen({ onLoginSuccess }) {
     }
   };
 
-  const startLocationServiceForSeller = async (sellerInfo) => {
-    try {
-      console.log('📍 Starting location service for seller...');
-
-      const visitorInfo = {
-        VisitorCode: sellerInfo.NOF || sellerInfo.UserID,
-        VisitorName: sellerInfo.NameF || sellerInfo.FullName,
-      };
-
-      await saveVisitorInfo(visitorInfo);
-      await startAutoSendLocation(visitorInfo, {
-        intervalMs: 5 * 60 * 1000
-      });
-
-      console.log('✅ Location service started successfully for seller');
-
-    } catch (error) {
-      console.log('❌ Error starting location service:', error);
-
-      if (error.message === 'PERMISSION_DENIED') {
-        setTimeout(() => {
-          Alert.alert(
-            "دسترسی به موقعیت مکانی",
-            "برای ارسال موقعیت مکانی، لطفاً دسترسی موقعیت مکانی را فعال کنید.",
-            [{ text: "متوجه شدم" }]
-          );
-        }, 1000);
-      }
-    }
-  };
-
   const loginWithSavedCredentials = async () => {
     if (!savedCredentials) return;
     
@@ -313,93 +280,81 @@ export default function LoginScreen({ onLoginSuccess }) {
     );
   };
 
-  const showSaveCredentialsDialog = async (user) => {
-    const askedBefore = await AsyncStorage.getItem("credentials_save_asked");
-    if (askedBefore === "true") {
-     // 🔥 فقط اگر فعال باشد location را استارت کن
-    if (APP_CONFIG.LOCATION_TRACKING_ENABLED && 
-        (user.UserType === 'seller' || user.role === 'seller')) {
-      await startLocationServiceForSeller(user);
-    }
-      onLoginSuccess(user);
-      return;
-    }
+const showSaveCredentialsDialog = async (user) => {
+  const askedBefore = await AsyncStorage.getItem("credentials_save_asked");
+  
+  if (askedBefore === "true") {
+    // 🔥 اصلاح: فراخوانی onLoginSuccess که خودش location را مدیریت میکنه
+    onLoginSuccess(user);
+    return;
+  }
 
-    Alert.alert(
-      "💾 ذخیره اطلاعات ورود",
-      "آیا می‌خواهید نام کاربری و رمز عبور خود را برای ورود سریع‌تر ذخیره کنید؟",
-      [
-        {
-          text: "خیر",
-          style: "cancel",
-          onPress: async () => {
-            await AsyncStorage.setItem("credentials_save_asked", "true");
-            if (user.UserType === 'seller' || user.role === 'seller') {
-              await startLocationServiceForSeller(user);
-            }
+  Alert.alert(
+    "💾 ذخیره اطلاعات ورود",
+    "آیا می‌خواهید نام کاربری و رمز عبور خود را برای ورود سریع‌تر ذخیره کنید؟",
+    [
+      {
+        text: "خیر",
+        style: "cancel",
+        onPress: async () => {
+          await AsyncStorage.setItem("credentials_save_asked", "true");
+          // 🔥 onLoginSuccess خودش location را شروع میکنه
+          onLoginSuccess(user);
+        },
+      },
+      {
+        text: "بله",
+        onPress: async () => {
+          await saveCredentials();
+          await AsyncStorage.setItem("credentials_save_asked", "true");
+
+          if (biometricAvailable && !isSimulator) {
+            showEnableBiometricDialog(user);
+          } else {
+            // 🔥 onLoginSuccess خودش location را شروع میکنه
             onLoginSuccess(user);
-          },
+          }
         },
-        {
-          text: "بله",
-          onPress: async () => {
-            await saveCredentials();
-            await AsyncStorage.setItem("credentials_save_asked", "true");
+      },
+    ]
+  );
+};
+const showEnableBiometricDialog = (user) => {
+  const biometricName = biometricType === "face" ? "تشخیص چهره" : "اثر انگشت";
 
-            if (user.UserType === 'seller' || user.role === 'seller') {
-              await startLocationServiceForSeller(user);
-            }
-
-            if (biometricAvailable && !isSimulator) {
-              showEnableBiometricDialog(user);
-            } else {
-              onLoginSuccess(user);
-            }
-          },
+  Alert.alert(
+    `🔐 فعال‌سازی ${biometricName}`,
+    `آیا می‌خواهید برای ورود سریع‌تر از ${biometricName} استفاده کنید؟`,
+    [
+      {
+        text: "بعداً",
+        style: "cancel",
+        onPress: () => {
+          // 🔥 onLoginSuccess خودش location را شروع میکنه
+          onLoginSuccess(user);
         },
-      ]
-    );
-  };
+      },
+      {
+        text: "فعال کردن",
+        onPress: async () => {
+          await AsyncStorage.setItem("biometric_enabled", "true");
 
-  const showEnableBiometricDialog = (user) => {
-    const biometricName = biometricType === "face" ? "تشخیص چهره" : "اثر انگشت";
-
-    Alert.alert(
-      `🔐 فعال‌سازی ${biometricName}`,
-      `آیا می‌خواهید برای ورود سریع‌تر از ${biometricName} استفاده کنید؟`,
-      [
-        {
-          text: "بعداً",
-          style: "cancel",
-          onPress: () => {
-            if (user.UserType === 'seller' || user.role === 'seller') {
-              startLocationServiceForSeller(user);
-            }
-            onLoginSuccess(user);
-          },
+          Alert.alert(
+            "✅ فعال شد",
+            `${biometricName} با موفقیت فعال شد.`,
+            [{ 
+              text: "متوجه شدم", 
+              onPress: () => {
+                // 🔥 onLoginSuccess خودش location را شروع میکنه
+                onLoginSuccess(user);
+              }
+            }]
+          );
         },
-        {
-          text: "فعال کردن",
-          onPress: async () => {
-            await AsyncStorage.setItem("biometric_enabled", "true");
-
-            /*
-if (user.UserType === 'seller' || user.role === 'seller') {
-  await startLocationServiceForSeller(user);
-}
-*/
-
-            Alert.alert(
-              "✅ فعال شد",
-              `${biometricName} با موفقیت فعال شد.`,
-              [{ text: "متوجه شدم", onPress: () => onLoginSuccess(user) }]
-            );
-          },
-        },
-      ]
-    );
-  };
-
+      },
+    ]
+  );
+};
   const saveCredentials = async () => {
     try {
       const credentials = {

@@ -3,7 +3,6 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -51,6 +50,7 @@ const ChatScreen = ({ route }) => {
   const typingTimeoutRef = useRef(null);
   const isInitializedRef = useRef(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
 
   // ✨ دریافت آدرس سرور
   const getBaseUrl = async () => {

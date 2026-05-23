@@ -19,7 +19,7 @@ import { CartContext } from "../CartContext";
 import FullscreenImageModal from "../components/FullscreenImageModal";
 import ModalProduct from "../components/ModalProduct";
 import ProductCard from "../components/ProductCard";
-import { getCacheStatus, getProductsWithCache } from '../services/productCacheService';
+import { getCacheStatus } from '../services/productCacheService';
 import styles from "../styles/ProductListScreen.styles";
 
 const { width, height } = Dimensions.get("window");
@@ -154,7 +154,7 @@ export default function ProductListScreen({ route, navigation }) {
         let manfiStatus = await getStoredManfiStatus();
         try {
           manfiStatus = await refreshManfiStatus();
-        } catch (refreshError) {}
+        } catch (refreshError) { }
         setHasManfiAccess(manfiStatus);
       } catch (error) {
         console.log('❌ خطا در بررسی وضعیت manfi:', error);
@@ -240,18 +240,16 @@ export default function ProductListScreen({ route, navigation }) {
           }
         }
 
-        const result = await getProductsWithCache(
-          () => getProducts(mainGroupCode, subGroupCode, buyerCode),
-          groupKey
-        );
-
-        productsData = result.products || [];
+        const result = await getProducts(mainGroupCode, subGroupCode, buyerCode);
+        productsData = result.products || result || [];
         pricingData = result.pricing || {
           buyerCode: buyerCode,
           ghk: 0,
           priceColumn: 'PriceF1',
           priceLabel: 'PriceF1'
         };
+        setIsFromCache(false);
+
 
         // فقط اگر قیمت‌ها قدیمی هستن پیام بده
         if (result._fromCache && result._pricesStale) {

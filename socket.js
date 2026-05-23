@@ -237,7 +237,7 @@ export const getSocket = () => {
   return socket;
 };
 
-export const socketPromise = getSocketPromise();
+export const socketPromise = null;
 
 export const sendMessageWithSocket = async (messageData) => {
   try {

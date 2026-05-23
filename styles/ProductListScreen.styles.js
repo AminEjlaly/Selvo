@@ -305,6 +305,10 @@ export default StyleSheet.create({
      fontFamily: "IRANYekan",
     letterSpacing: 0.1,
     flex: 1,
+    flexShrink: 1,
+  adjustsFontSizeToFit: true,   // iOS
+  minimumFontScale: 0.6,        // حداقل تا ۶۰٪ کوچک می‌شه
+  numberOfLines: 1,
   },
   priceLabel: {
     fontSize: 12,
