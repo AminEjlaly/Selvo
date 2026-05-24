@@ -13,8 +13,6 @@ import {
 import { CartProvider } from "./CartContext";
 import { getCurrentRoute, navigationRef } from "./navigationService";
 import {
-  getLastSentTime,
-  isAutoSendRunning,
   startAutoSendLocation,
   stopAutoSendLocation
 } from './services/locationService';
@@ -252,55 +250,38 @@ const handleLoginSuccess = async (userData) => {
 
     setMenuOpen(false);
 
-    // 🔥 شروع سرویس لوکیشن فقط برای فروشنده و تحویل‌دار
-    if (APP_CONFIG.LOCATION_TRACKING_ENABLED && 
-        (userType === 'seller' || userType === 'delivery')) {
-      try {
-        console.log('📍 Starting location service after successful login...');
+  // 🔥 شروع سرویس لوکیشن در پس‌زمینه - بدون block کردن لاگین
+if (APP_CONFIG.LOCATION_TRACKING_ENABLED && 
+    (userType === 'seller')) {
+  
+  setTimeout(async () => {
+    try {
+      console.log('📍 Starting location service in background...');
 
-        const visitorInfo = {
-          VisitorCode: user.userId?.toString() || 
-                      user.id?.toString() || 
-                      user.NOF?.toString() || 
-                      user.UserID?.toString() ||
-                      'unknown',
-          VisitorName: user.NameF || 
-                      user.name || 
-                      user.FullName || 
-                      'Unknown User'
-        };
+      const visitorInfo = {
+        VisitorCode: user.userId?.toString() || 
+                    user.id?.toString() || 
+                    user.NOF?.toString() || 
+                    user.UserID?.toString() ||
+                    'unknown',
+        VisitorName: user.NameF || 
+                    user.name || 
+                    user.FullName || 
+                    'Unknown User'
+      };
 
-        console.log('📍 VisitorInfo:', visitorInfo);
+      await AsyncStorage.setItem('visitor_info', JSON.stringify(visitorInfo));
+      await startAutoSendLocation(visitorInfo, {
+        intervalMs: 60000,
+        minInterval: 10000
+      });
 
-        // ذخیره visitor info
-        await AsyncStorage.setItem('visitor_info', JSON.stringify(visitorInfo));
-
-        // شروع ارسال خودکار
-        await startAutoSendLocation(visitorInfo, {
-          intervalMs: 60000, // هر 1 دقیقه
-          minInterval: 10000
-        });
-
-        console.log('✅ Location service started successfully after login');
-
-        // تست بعد از 2 دقیقه
-        setTimeout(() => {
-          console.log('📍 Test after 2 minutes...');
-          try {
-            const running = isAutoSendRunning();
-            const lastTime = getLastSentTime();
-            const timeSince = Date.now() - lastTime;
-            console.log(`📍 Status: ${running ? 'running' : 'stopped'}`);
-            console.log(`📍 Last sent: ${Math.floor(timeSince / 1000)} seconds ago`);
-          } catch (error) {
-            console.log('❌ Error checking status:', error.message);
-          }
-        }, 120000);
-
-      } catch (locationError) {
-        console.warn('⚠️ Failed to start location service:', locationError.message);
-      }
+      console.log('✅ Location service started in background');
+    } catch (locationError) {
+      console.warn('⚠️ Location service failed (non-blocking):', locationError.message);
     }
+  }, 0);
+}
 
   } catch (err) {
     console.warn("⚠️ Login success warning:", err.message);

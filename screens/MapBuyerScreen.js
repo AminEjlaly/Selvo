@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { getServerUrl } from '../config';
@@ -15,19 +15,49 @@ export default function MapBuyerScreen({ route }) {
   const [mapError, setMapError] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [userLocationCoords, setUserLocationCoords] = useState(null);
-  const [maxDistance, setMaxDistance] = useState(50); // 🔥 حالت پیش‌فرض
-  const [proximityCheckEnabled, setProximityCheckEnabled] = useState(true); // 🔥 وضعیت فعال/غیرفعال
+  const [maxDistance, setMaxDistance] = useState(50);
+  const [proximityCheckEnabled, setProximityCheckEnabled] = useState(true);
   const webRef = useRef(null);
 
-  // 🔥 تابع دریافت تنظیمات proximity از سرور
+  // 🔥 ذخیره buyers در کش
+  const cacheBuyers = async (buyersData) => {
+    try {
+      await AsyncStorage.setItem('cached_buyers', JSON.stringify(buyersData));
+      await AsyncStorage.setItem('cached_buyers_time', Date.now().toString());
+      console.log('✅ اطلاعات مشتری‌ها در کش ذخیره شد');
+    } catch (error) {
+      console.error('❌ خطا در ذخیره کش:', error);
+    }
+  };
+
+  // 🔥 خواندن buyers از کش
+  const getCachedBuyers = async () => {
+    try {
+      const cached = await AsyncStorage.getItem('cached_buyers');
+      const cacheTime = await AsyncStorage.getItem('cached_buyers_time');
+      
+      // اگر کمتر از 10 دقیقه گذشته باشد
+      if (cached && cacheTime && (Date.now() - parseInt(cacheTime)) < 10 * 60 * 1000) {
+        console.log('✅ استفاده از داده‌های کش شده');
+        return JSON.parse(cached);
+      }
+      console.log('⚠️ کش منقضی شده یا وجود ندارد');
+      return null;
+    } catch (error) {
+      console.error('❌ خطا در خواندن کش:', error);
+      return null;
+    }
+  };
+
+  // تابع دریافت تنظیمات proximity از سرور
   const fetchProximitySettings = async () => {
     try {
       const token = await AsyncStorage.getItem('token');
       const baseUrl = await getServerUrl();
-      
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
+
       const response = await fetch(`${baseUrl}/api/proximity-check`, {
         method: 'GET',
         headers: {
@@ -48,7 +78,7 @@ export default function MapBuyerScreen({ route }) {
           return data.data;
         }
       }
-      
+
       console.log('⚠️ استفاده از مقادیر پیش‌فرض');
       return { maxDistance: 50, proximityCheckEnabled: true };
     } catch (error) {
@@ -60,9 +90,17 @@ export default function MapBuyerScreen({ route }) {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 🔥 اول تنظیمات proximity را بگیر
+        // 🔥 1. اول از کش بخوان
+        const cachedData = await getCachedBuyers();
+        if (cachedData && cachedData.length > 0) {
+          setBuyers(cachedData);
+          setLoading(false); // نمایش سریع داده‌های کش شده
+        }
+
+        // 🔥 2. دریافت تنظیمات proximity
         await fetchProximitySettings();
 
+        // 🔥 3. دریافت داده‌های جدید از سرور
         const token = await AsyncStorage.getItem('token');
         if (!token) throw new Error('توکن معتبر یافت نشد');
 
@@ -77,10 +115,13 @@ export default function MapBuyerScreen({ route }) {
         if (json.success) {
           const validBuyers = json.data.filter(b => b.Lat && b.Lng && !isNaN(b.Lat) && !isNaN(b.Lng));
           setBuyers(validBuyers);
+          // 🔥 ذخیره در کش
+          await cacheBuyers(validBuyers);
         } else {
           throw new Error(json.message || 'خطا در دریافت اطلاعات مشتری‌ها');
         }
 
+        // 🔥 4. دریافت موقعیت کاربر
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           Alert.alert('خطا', 'دسترسی موقعیت مکانی رد شد');
@@ -118,13 +159,12 @@ export default function MapBuyerScreen({ route }) {
   };
 
   const getMapHtml = () => {
-    // 🔥 استفاده از maxDistance از state
     const currentMaxDistance = maxDistance;
 
     const buyersWithDistance = buyers.map(b => {
       let distance = null;
       let isInRange = false;
-      
+
       if (userLocationCoords) {
         distance = calculateDistance(
           userLocationCoords.latitude,
@@ -132,7 +172,6 @@ export default function MapBuyerScreen({ route }) {
           parseFloat(b.Lat),
           parseFloat(b.Lng)
         );
-        // 🔥 استفاده از maxDistance دینامیک
         isInRange = distance <= currentMaxDistance;
       }
 
@@ -153,21 +192,20 @@ export default function MapBuyerScreen({ route }) {
 
     const selectedCode = selectedBuyer ? selectedBuyer.code : null;
 
-    // 🔥 پاس دادن maxDistance به JavaScript نقشه
     return `
-      const MAX_DISTANCE = ${currentMaxDistance}; // 🔥 متغیر دینامیک
-      const PROXIMITY_CHECK_ENABLED = ${proximityCheckEnabled}; // 🔥 وضعیت فعال/غیرفعال
+      const MAX_DISTANCE = ${currentMaxDistance};
+      const PROXIMITY_CHECK_ENABLED = ${proximityCheckEnabled};
 
-      let map = L.map('map', {
+      let map = new L.Map('map', {
+        key: "web.ae337d64d1d049c58c496982bcf84a58",
+        maptype: "dreamy",
+        center: [37.55, 45.07],
+        zoom: 13,
         zoomControl: false
-      }).setView([37.55, 45.07], 13);
-
+      });
+      
       L.control.zoom({
         position: 'bottomright'
-      }).addTo(map);
-
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
       }).addTo(map);
 
       const buyers = ${buyersJson};
@@ -175,12 +213,10 @@ export default function MapBuyerScreen({ route }) {
       let userMarker = null;
       let circles = [];
 
-      // تابع برای ایجاد دایره محدوده
       function createProximityCircle(buyer) {
         const isSelected = buyer.code === selectedBuyer;
         const isInRange = buyer.isInRange;
         
-        // 🔥 اگر چک غیرفعال باشد، همه محدوده‌ها سبز
         const circleColor = !PROXIMITY_CHECK_ENABLED ? '#10B981' : (isInRange ? '#10B981' : '#EF4444');
         const fillColor = !PROXIMITY_CHECK_ENABLED ? '#D1FAE5' : (isInRange ? '#D1FAE5' : '#FEE2E2');
         const fillOpacity = isInRange ? 0.15 : 0.1;
@@ -190,7 +226,7 @@ export default function MapBuyerScreen({ route }) {
           fillColor: fillColor,
           fillOpacity: fillOpacity,
           weight: isSelected ? 2 : 1,
-          radius: MAX_DISTANCE // 🔥 استفاده از متغیر دینامیک
+          radius: MAX_DISTANCE
         }).addTo(map);
         
         circles.push(circle);
@@ -200,10 +236,8 @@ export default function MapBuyerScreen({ route }) {
       buyers.forEach(b => {
         const isSelected = b.code === selectedBuyer;
         
-        // ایجاد دایره محدوده
         const circle = createProximityCircle(b);
         
-        // 🔥 اگر چک غیرفعال باشد، همه مارکرها سبز
         const markerColor = !PROXIMITY_CHECK_ENABLED ? '#10B981' : (isSelected ? '#7C3AED' : (b.isInRange ? '#10B981' : '#EF4444'));
         
         const icon = L.divIcon({
@@ -247,7 +281,6 @@ export default function MapBuyerScreen({ route }) {
         const marker = L.marker([b.lat, b.lng], { icon }).addTo(map);
 
         const distanceText = b.distance ? \`\${Math.round(b.distance)} متر\` : 'نامعلوم';
-        // 🔥 نمایش وضعیت بر اساس تنظیمات
         const statusText = !PROXIMITY_CHECK_ENABLED ? 'چک محدوده غیرفعال' : (b.isInRange ? 'در محدوده مجاز' : 'خارج از محدوده');
         const statusColor = !PROXIMITY_CHECK_ENABLED ? '#10B981' : (b.isInRange ? '#10B981' : '#EF4444');
 
@@ -270,11 +303,7 @@ export default function MapBuyerScreen({ route }) {
                 \${distanceText}
               </div>
             </div>
-            \${!PROXIMITY_CHECK_ENABLED ? \`
-              <div style="font-size:10px; color:#F59E0B; background:#FEF3C7; padding:4px; border-radius:4px; margin-bottom:8px;">
-                ⚠️ چک محدوده غیرفعال است
-              </div>
-            \` : ''}
+           
             <button onclick="navigateTo(\${b.lat}, \${b.lng})"
               style="
                 background: linear-gradient(135deg, \${!PROXIMITY_CHECK_ENABLED || b.isInRange ? '#10B981' : '#EF4444'} 0%, \${!PROXIMITY_CHECK_ENABLED || b.isInRange ? '#059669' : '#DC2626'} 100%);
@@ -378,8 +407,8 @@ export default function MapBuyerScreen({ route }) {
                 محدوده مجاز: \${MAX_DISTANCE} متر
               </div>
               \${!PROXIMITY_CHECK_ENABLED ? \`
-                <div style="font-size:9px; color:#F59E0B; margin-top:4px;">
-                  ⚠️ چک محدوده غیرفعال
+                <div style="font-size:9px; color:#10B981; margin-top:4px;">
+                  ✓ چک محدوده غیرفعال
                 </div>
               \` : ''}
             </div>
@@ -418,7 +447,6 @@ export default function MapBuyerScreen({ route }) {
         });
       };
 
-      // 🔥 بروزرسانی با maxDistance دینامیک
       window.updateUserLocation = function(lat, lng) {
         if (userMarker) {
           userMarker.setLatLng([lat, lng]);
@@ -426,7 +454,7 @@ export default function MapBuyerScreen({ route }) {
         
         buyers.forEach((buyer, index) => {
           const distance = calculateDistance(lat, lng, buyer.lat, buyer.lng);
-          const isInRange = distance <= MAX_DISTANCE; // 🔥 استفاده از متغیر دینامیک
+          const isInRange = distance <= MAX_DISTANCE;
           
           if (circles[index]) {
             const circleColor = !PROXIMITY_CHECK_ENABLED ? '#10B981' : (isInRange ? '#10B981' : '#EF4444');
@@ -498,6 +526,25 @@ export default function MapBuyerScreen({ route }) {
     `;
   };
 
+  // 🔥 کش کردن HTML نقشه با useMemo
+  const mapHtml = useMemo(() => {
+    if (buyers.length === 0) return '';
+    
+    return `
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <link rel="stylesheet" href="https://static.neshan.org/sdk/leaflet/v1.9.4/neshan-sdk/v1.0.8/index.css"/>
+          <script src="https://static.neshan.org/sdk/leaflet/v1.9.4/neshan-sdk/v1.0.8/index.js"></script>
+        </head>
+        <body style="margin:0; padding:0; height:100%;">
+          <div id="map" style="width:100%;height:100%;"></div>
+          <script>${getMapHtml()}</script>
+        </body>
+      </html>
+    `;
+  }, [buyers, userLocation, maxDistance, proximityCheckEnabled, selectedBuyer]);
+
   const onMessage = (event) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
@@ -519,22 +566,22 @@ export default function MapBuyerScreen({ route }) {
 
   const toggleAllCircles = (show) => {
     if (webRef.current) {
-      webRef.current.postMessage(JSON.stringify({ 
-        type: show ? 'showAllCircles' : 'hideAllCircles' 
+      webRef.current.postMessage(JSON.stringify({
+        type: show ? 'showAllCircles' : 'hideAllCircles'
       }));
     }
   };
 
   const updateUserLocation = async () => {
     try {
-      const loc = await Location.getCurrentPositionAsync({ 
+      const loc = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
-        timeout: 5000 
+        timeout: 5000
       });
-      
+
       setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
       setUserLocationCoords(loc.coords);
-      
+
       if (webRef.current) {
         webRef.current.postMessage(JSON.stringify({
           type: 'updateUserLocation',
@@ -582,22 +629,11 @@ export default function MapBuyerScreen({ route }) {
         domStorageEnabled={true}
         mixedContentMode="always"
         onMessage={onMessage}
-        source={{
-          html: `
-            <html>
-              <head>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"/>
-                <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-              </head>
-              <body style="margin:0; padding:0; height:100%;">
-                <div id="map" style="width:100%;height:100%;"></div>
-                <script>${getMapHtml()}</script>
-              </body>
-            </html>
-          `,
-        }}
+        source={{ html: mapHtml }}
         style={styles.webview}
+        // 🔥 فعال‌سازی کش WebView
+        cacheEnabled={true}
+        cacheMode="LOAD_CACHE_ELSE_NETWORK"
       />
 
       {/* Floating Action Buttons */}
@@ -640,17 +676,10 @@ export default function MapBuyerScreen({ route }) {
           <Text style={styles.infoBadgeText}>
             {buyers.length} مشتری
           </Text>
-          {/* 🔥 نمایش محدوده فعلی */}
           <View style={styles.distanceBadge}>
             <Text style={styles.distanceText}>محدوده: {maxDistance}m</Text>
           </View>
-          {/* 🔥 نمایش وضعیت چک */}
-          {!proximityCheckEnabled && (
-            <View style={styles.warningBadge}>
-              <Ionicons name="warning" size={10} color="#F59E0B" />
-              <Text style={styles.warningText}>چک غیرفعال</Text>
-            </View>
-          )}
+         
           <View style={styles.legend}>
             <View style={styles.legendItem}>
               <View style={[styles.circleSample, styles.inRange]} />
@@ -676,7 +705,7 @@ const styles = StyleSheet.create({
     width,
     height,
   },
-  
+
   // Loading
   loadingContainer: {
     flex: 1,
@@ -701,7 +730,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontFamily: 'IRANYekan',
   },
-  
+
   // Error
   errorContainer: {
     flex: 1,
@@ -738,7 +767,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontFamily: 'IRANYekan',
   },
-  
+
   // FAB Buttons
   fabButton: {
     position: 'absolute',
@@ -776,7 +805,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#EF4444',
     shadowColor: '#EF4444',
   },
-  
+
   // Info Badge
   infoBadge: {
     position: 'absolute',
@@ -800,6 +829,18 @@ const styles = StyleSheet.create({
     color: '#0052CC',
     fontWeight: '600',
     fontFamily: 'IRANYekan-Bold',
+  },
+  distanceBadge: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  distanceText: {
+    fontSize: 10,
+    color: '#0052CC',
+    fontWeight: '500',
+    fontFamily: 'IRANYekan',
   },
   legend: {
     gap: 4,

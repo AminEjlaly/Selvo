@@ -20,11 +20,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import CustomerPasswordModal from '../components/CustomerPasswordModal';
-import { APP_CONFIG } from '../config';
 import {
   stopAutoSendLocation
 } from '../services/locationService';
-import mandatoryLocationService from '../services/mandatoryLocationService';
 import { loginStyles } from "../styles/LoginScreen.styles";
 
 export default function LoginScreen({ onLoginSuccess }) {
@@ -216,15 +214,7 @@ export default function LoginScreen({ onLoginSuccess }) {
     
     setLoading(true);
     
-    try {
-      await mandatoryLocationService.requireLocationForLogin();
-    } catch (locationError) {
-      setLoading(false);
-      mandatoryLocationService.showMandatoryLocationAlert(locationError, () => {
-        loginWithSavedCredentials();
-      });
-      return;
-    }
+   
 
     setUsername(savedCredentials.username);
     setPassword(savedCredentials.password);
@@ -486,17 +476,6 @@ const showEnableBiometricDialog = (user) => {
       return;
     }
 
-if (APP_CONFIG.MANDATORY_LOCATION_ON_LOGIN) {
-    try {
-      await mandatoryLocationService.requireLocationForLogin();
-    } catch (locationError) {
-      setLoading(false);
-      mandatoryLocationService.showMandatoryLocationAlert(locationError, () => {
-        handleLogin(loginUsername, loginPassword);
-      });
-      return;
-    }
-  }
 
     const user = convertPersianToEnglishNumbers(loginUsername || username);
     const pass = convertPersianToEnglishNumbers(loginPassword || password);
