@@ -2959,3 +2959,69 @@ export const refreshManfiStatus = async () => {
     return false;
   }
 }
+//_________________________________________________________________________________visitor location for buss
+// --- دریافت لیست ویزیتورها (فقط برای مدیر - کد ۱) ---
+export const getVisitors = async () => {
+  try {
+    const headers = await getAuthHeaders();
+    const baseUrl = await getServerUrl();
+ 
+    const res = await fetchWithTimeout(`${baseUrl}/api/users/visitors`, {
+      method: 'GET',
+      headers,
+    });
+ 
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error('پاسخ سرور نامعتبر است');
+    }
+ 
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'خطا در دریافت لیست ویزیتورها');
+    }
+ 
+    return data.data || [];
+  } catch (err) {
+    if (err.message === 'Network request failed') {
+      throw new Error('ارتباط با سرور برقرار نشد');
+    }
+    throw err;
+  }
+};
+ 
+// --- دریافت مسیر روزانه یک ویزیتور (فقط برای مدیر - کد ۱) ---
+// date باید به فرمت شمسی باشد مثلاً: 1403/02/05
+export const getVisitorLocations = async (visitorCode, date) => {
+  try {
+    const headers = await getAuthHeaders();
+    const baseUrl = await getServerUrl();
+ 
+    const url = `${baseUrl}/api/visitor-locations?visitorCode=${encodeURIComponent(visitorCode)}&date=${encodeURIComponent(date)}`;
+ 
+    const res = await fetchWithTimeout(url, {
+      method: 'GET',
+      headers,
+    });
+ 
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error('پاسخ سرور نامعتبر است');
+    }
+ 
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'خطا در دریافت مسیر ویزیتور');
+    }
+ 
+    return data.data || [];
+  } catch (err) {
+    if (err.message === 'Network request failed') {
+      throw new Error('ارتباط با سرور برقرار نشد');
+    }
+    throw err;
+  }
+};
+//_________________________________________________________________________________visitor location for buss end

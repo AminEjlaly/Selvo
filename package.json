@@ -32,6 +32,7 @@
     "expo-sharing": "^14.0.7",
     "expo-splash-screen": "^31.0.10",
     "expo-status-bar": "~3.0.8",
+    "expo-task-manager": "~14.0.7",
     "jalaali-js": "^1.2.8",
     "lucide-react-native": "^0.548.0",
     "moment-jalaali": "^0.10.4",

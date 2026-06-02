@@ -42,8 +42,13 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "اجازه دسترسی به موقعیت مکانی برای ردیابی موقعیت شما",
-          "locationWhenInUsePermission": "اجازه دسترسی به موقعیت مکانی برای ردیابی موقعیت شما"
+            "locationAlwaysAndWhenInUsePermission": "اجازه دسترسی به موقعیت مکانی برای ردیابی موقعیت شما",
+          "locationAlwaysPermission": "برای ارسال موقعیت حتی زمانی که برنامه بسته است",
+          "locationWhenInUsePermission": "اجازه دسترسی به موقعیت مکانی برای ردیابی موقعیت شما",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+    
         }
       ],
       "expo-splash-screen",

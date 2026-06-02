@@ -15,7 +15,8 @@ import {
   TouchableWithoutFeedback,
   View
 } from 'react-native';
-import { getDailyBuyers, getMapBuyers } from '../api';
+import { getDailyBuyers, getMapBuyers, registerBuyerLocation } from '../api';
+import ManualLocationModal from '../components/ManualLocationModal';
 import { navigate } from '../navigationService';
 import { checkAndSendBuyerLocation } from '../services/buyerLocationService';
 import { styles } from '../styles/DailyBuyerListStyles';
@@ -38,20 +39,23 @@ export default function DailyBuyerListScreen() {
   const isFetchingRef = useRef(false);
   const isInitialMount = useRef(true);
 
+  const [showManualLocationModal, setShowManualLocationModal] = useState(false);
+  const [manualLocationBuyer, setManualLocationBuyer] = useState(null);
+
   // تابع بهبود یافته برای نرمال سازی متن فارسی
   const normalizePersianText = (text) => {
     if (!text) return '';
-    
+
     text = String(text);
     text = text.trim();
-    
+
     text = text
       .replace(/[يٰ]/g, 'ی')
       .replace(/[ك]/g, 'ک')
       .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
       .replace(/\s+/g, ' ')
       .toLowerCase();
-    
+
     return text;
   };
 
@@ -62,7 +66,7 @@ export default function DailyBuyerListScreen() {
     try {
       // وارد کردن تابع چک نزدیکی
       const { checkProximityForBuyer } = require('../services/proximityCheckService');
-      
+
       // بررسی نزدیکی ویزیتور به مشتری
       const proximityResult = await checkProximityForBuyer(
         selectedBuyer,
@@ -77,8 +81,8 @@ export default function DailyBuyerListScreen() {
           `مشتری "${selectedBuyer.name}" هنوز لوکیشن ثبت نکرده است.\n\nلطفاً ابتدا لوکیشن مشتری را ثبت کنید.`,
           [
             { text: 'انصراف', style: 'cancel' },
-            { 
-              text: 'ثبت لوکیشن', 
+            {
+              text: 'ثبت لوکیشن',
               onPress: () => handleRegisterLocation(),
               style: 'default'
             }
@@ -95,9 +99,9 @@ export default function DailyBuyerListScreen() {
             'برای ثبت فاکتور، دسترسی به موقعیت مکانی الزامی است.',
             [
               { text: 'انصراف', style: 'cancel' },
-              { 
-                text: 'تنظیمات', 
-                onPress: () => Linking.openSettings() 
+              {
+                text: 'تنظیمات',
+                onPress: () => Linking.openSettings()
               }
             ]
           );
@@ -124,11 +128,11 @@ export default function DailyBuyerListScreen() {
 
       // ✅ همه چیز OK است - انتقال به صفحه Cart
       console.log(`✅ ویزیتور در محدوده مجاز (${proximityResult.distance} متر)`);
-      
+
       setModalVisible(false);
-      
+
       setTimeout(() => {
-        navigation.navigate('Cart', { 
+        navigation.navigate('Cart', {
           selectedCustomer: {
             code: selectedBuyer.code,
             name: selectedBuyer.name,
@@ -137,14 +141,14 @@ export default function DailyBuyerListScreen() {
             mande: selectedBuyer.mande,
             tblo: selectedBuyer.tblo,
             // ارسال لوکیشن مشتری به Cart
-              Lat: proximityResult.buyerLocation?.latitude || 
-         selectedBuyer.Lat || 
-         mapBuyers.find(b => String(b.code) === String(selectedBuyer.code))?.Lat || 
-         0,
-    Lng: proximityResult.buyerLocation?.longitude || 
-         selectedBuyer.Lng || 
-         mapBuyers.find(b => String(b.code) === String(selectedBuyer.code))?.Lng || 
-         0
+            Lat: proximityResult.buyerLocation?.latitude ||
+              selectedBuyer.Lat ||
+              mapBuyers.find(b => String(b.code) === String(selectedBuyer.code))?.Lat ||
+              0,
+            Lng: proximityResult.buyerLocation?.longitude ||
+              selectedBuyer.Lng ||
+              mapBuyers.find(b => String(b.code) === String(selectedBuyer.code))?.Lng ||
+              0
           }
         });
       }, 300);
@@ -162,10 +166,10 @@ export default function DailyBuyerListScreen() {
   // فیلتر کردن مشتری‌ها بر اساس جستجو با نرمال سازی
   const filteredBuyers = buyers.filter(buyer => {
     if (!searchQuery.trim()) return true;
-    
+
     const normalizedSearch = normalizePersianText(searchQuery);
     const normalizedName = normalizePersianText(buyer.name);
-    
+
     return normalizedName.includes(normalizedSearch);
   });
 
@@ -178,12 +182,12 @@ export default function DailyBuyerListScreen() {
 
     try {
       isFetchingRef.current = true;
-      
+
       // فقط برای اولین بار loading نشان بده
       if (isInitialMount.current || forceRefresh) {
         setLoading(true);
       }
-      
+
       console.log('🔄 در حال دریافت داده‌های مشتریان...');
       const [dailyData, mapData] = await Promise.all([
         getDailyBuyers(),
@@ -226,14 +230,14 @@ export default function DailyBuyerListScreen() {
   useFocusEffect(
     useCallback(() => {
       console.log('🎯 صفحه فوکوس شد - بررسی برای ریلود');
-      
+
       // فقط اگر اولین بار نیست و در حال حاضر در حال fetch نیستیم
       if (!isInitialMount.current && !isFetchingRef.current) {
         const timer = setTimeout(() => {
           console.log('🔄 ریلود خودکار داده‌ها');
           fetchBuyers(true);
         }, 300);
-        
+
         return () => clearTimeout(timer);
       }
     }, [])
@@ -262,14 +266,14 @@ export default function DailyBuyerListScreen() {
   const openBuyerDetails = async (buyer) => {
     setSelectedBuyer(buyer);
     setCheckingLocation(true);
-    
+
     try {
       const existsInMap = mapBuyers.find(b => String(b.code) === String(buyer.code));
-      
+
       if (existsInMap) {
         console.log('ℹ️ مشتری قبلاً لوکیشن دارد:', buyer.name);
       }
-      
+
       setModalVisible(true);
     } catch (error) {
       console.error('خطا در بررسی وضعیت:', error);
@@ -282,46 +286,46 @@ export default function DailyBuyerListScreen() {
   const handleRegisterLocation = async () => {
     if (!selectedBuyer) return;
 
+    Alert.alert(
+      'ثبت لوکیشن',
+      'روش ثبت لوکیشن را انتخاب کنید',
+      [
+        { text: 'انصراف', style: 'cancel' },
+        {
+          text: '📍 خودکار (GPS)',
+          onPress: () => handleRegisterLocationAuto()
+        },
+        {
+          text: '🗺️ انتخاب روی نقشه',
+          onPress: () => {
+            setManualLocationBuyer(selectedBuyer);
+            setShowManualLocationModal(true);
+          }
+        }
+      ]
+    );
+  };
+  const handleRegisterLocationAuto = async () => {
+    if (!selectedBuyer) return;
     try {
       setRegisteringLocation(true);
-
       const result = await checkAndSendBuyerLocation(selectedBuyer.code, selectedBuyer.name);
-
       const updatedMapBuyers = [...mapBuyers, {
         ...selectedBuyer,
         Lat: result.coordinates.latitude,
         Lng: result.coordinates.longitude
       }];
       setMapBuyers(updatedMapBuyers);
-
       Alert.alert('✅ موفق', result.message || 'لوکیشن مشتری با موفقیت ثبت شد');
       setModalVisible(false);
-
-      // ریلود داده‌ها بعد از ثبت لوکیشن
-      setTimeout(() => {
-        fetchBuyers(true);
-      }, 300);
-
+      setTimeout(() => fetchBuyers(true), 300);
     } catch (error) {
-      console.error('❌ Error registering location:', error);
-      
       if (error.message === 'LOCATION_ALREADY_EXISTS') {
-        Alert.alert(
-          '⚠️ توجه', 
-          `مشتری "${selectedBuyer.name}" قبلاً لوکیشن ثبت کرده است.\n\nنیازی به ثبت مجدد نیست.`,
-          [{ text: 'متوجه شدم', style: 'default' }]
-        );
+        Alert.alert('⚠️ توجه', `مشتری "${selectedBuyer.name}" قبلاً لوکیشن ثبت کرده است.`);
       } else if (error.message === 'PERMISSION_DENIED') {
-        Alert.alert(
-          'دسترسی ضروری', 
-          'برای ثبت لوکیشن، لطفاً دسترسی موقعیت مکانی را فعال کنید',
-          [
-            { text: 'انصراف', style: 'cancel' },
-            { text: 'تنظیمات', onPress: () => Linking.openSettings() }
-          ]
+        Alert.alert('دسترسی ضروری', 'برای ثبت لوکیشن، لطفاً دسترسی موقعیت مکانی را فعال کنید',
+          [{ text: 'انصراف', style: 'cancel' }, { text: 'تنظیمات', onPress: () => Linking.openSettings() }]
         );
-      } else if (error.message === 'LOCATION_ERROR') {
-        Alert.alert('خطا', 'دریافت موقعیت با خطا مواجه شد. لطفاً دوباره تلاش کنید');
       } else {
         Alert.alert('خطا', error.message || 'خطا در ثبت لوکیشن');
       }
@@ -329,9 +333,38 @@ export default function DailyBuyerListScreen() {
       setRegisteringLocation(false);
     }
   };
+  const handleManualLocationConfirm = async (coords) => {
+  if (!manualLocationBuyer) return;
+  try {
+    setRegisteringLocation(true);
 
-  const hasLocation = selectedBuyer ? 
-    mapBuyers.some(b => String(b.code) === String(selectedBuyer.code)) : 
+    // همون API لوکیشن خودکار — فقط coords دستی میدیم
+    await registerBuyerLocation(
+      manualLocationBuyer.code,
+      coords.latitude,
+      coords.longitude
+    );
+
+    setMapBuyers(prev => [...prev, {
+      ...manualLocationBuyer,
+      Lat: coords.latitude,
+      Lng: coords.longitude
+    }]);
+    setShowManualLocationModal(false);
+    setManualLocationBuyer(null);
+    Alert.alert('✅ موفق', 'لوکیشن مشتری با موفقیت ثبت شد');
+    setModalVisible(false);
+    setTimeout(() => fetchBuyers(true), 300);
+
+  } catch (error) {
+    Alert.alert('خطا', error.message || 'خطا در ثبت لوکیشن');
+  } finally {
+    setRegisteringLocation(false);
+  }
+};
+
+  const hasLocation = selectedBuyer ?
+    mapBuyers.some(b => String(b.code) === String(selectedBuyer.code)) :
     false;
 
   const handleOutsidePress = () => handleModalClose();
@@ -359,10 +392,10 @@ export default function DailyBuyerListScreen() {
 
   const renderItem = ({ item }) => {
     const hasLoc = mapBuyers.some(b => String(b.code) === String(item.code));
-    
+
     return (
-      <TouchableOpacity 
-        style={styles.card} 
+      <TouchableOpacity
+        style={styles.card}
         onPress={() => openBuyerDetails(item)}
         activeOpacity={0.7}
       >
@@ -370,7 +403,7 @@ export default function DailyBuyerListScreen() {
           <View style={styles.avatarContainer}>
             <MaterialIcons name="person" size={20} color="#fff" />
           </View>
-          
+
           <View style={styles.headerInfo}>
             <Text style={styles.name}>{item.name}</Text>
             <Text style={styles.code}>کد: {item.code}</Text>
@@ -406,15 +439,15 @@ export default function DailyBuyerListScreen() {
     );
   };
 
-  if (loading) 
+  if (loading)
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#3B82F6" />
         <Text style={styles.loadingText}>در حال بارگذاری...</Text>
       </View>
     );
-  
-  if (error) 
+
+  if (error)
     return (
       <View style={styles.center}>
         <MaterialIcons name="error-outline" size={64} color="#EF4444" />
@@ -425,15 +458,15 @@ export default function DailyBuyerListScreen() {
         </TouchableOpacity>
       </View>
     );
-  
-  if (buyers.length === 0) 
+
+  if (buyers.length === 0)
     return (
       <View style={styles.container}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.addButton}
           onPress={navigateToCustomerRegistration}
         >
-          <MaterialIcons name="person-add" size={20} color="#fff" style={{ marginLeft: 8}} />
+          <MaterialIcons name="person-add" size={20} color="#fff" style={{ marginLeft: 8 }} />
           <Text style={styles.addButtonText}>تعریف مشتری جدید</Text>
         </TouchableOpacity>
         <View style={styles.center}>
@@ -447,7 +480,7 @@ export default function DailyBuyerListScreen() {
     <View style={styles.container}>
       {/* هدر با دکمه اضافه */}
       <View style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.addButton}
           onPress={navigateToCustomerRegistration}
           activeOpacity={0.8}
@@ -534,7 +567,7 @@ export default function DailyBuyerListScreen() {
                       <Text style={styles.modalTitle}>{selectedBuyer.name}</Text>
                       <Text style={styles.modalCode}>کد مشتری: {selectedBuyer.code}</Text>
                     </View>
-                    
+
                     <View style={styles.modalBody}>
                       <View style={styles.modalRow}>
                         <View style={styles.modalIconBox}>
@@ -579,19 +612,19 @@ export default function DailyBuyerListScreen() {
 
                     {/* دکمه‌های جمع‌وجور و بالاتر */}
                     <View style={styles.modalActions}>
-                      <TouchableOpacity 
-                        style={styles.primaryButton} 
+                      <TouchableOpacity
+                        style={styles.primaryButton}
                         onPress={handleRegisterInvoice}
                       >
                         <MaterialIcons name="receipt-long" size={18} color="#fff" />
                         <Text style={styles.primaryButtonText}>ثبت فاکتور</Text>
                       </TouchableOpacity>
 
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         style={[
                           styles.secondaryButton,
                           (registeringLocation || hasLocation) && styles.disabledButton
-                        ]} 
+                        ]}
                         onPress={handleRegisterLocation}
                         disabled={registeringLocation || hasLocation}
                       >
@@ -610,18 +643,18 @@ export default function DailyBuyerListScreen() {
                         )}
                       </TouchableOpacity>
 
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         style={[
                           styles.mapButton,
                           !hasLocation && styles.disabledMapButton
-                        ]} 
+                        ]}
                         onPress={handleShowOnMap}
                         disabled={!hasLocation}
                       >
-                        <MaterialIcons 
-                          name="map" 
-                          size={18} 
-                          color={hasLocation ? "#3B82F6" : "#9CA3AF"} 
+                        <MaterialIcons
+                          name="map"
+                          size={18}
+                          color={hasLocation ? "#3B82F6" : "#9CA3AF"}
                         />
                         <Text style={[
                           styles.mapButtonText,
@@ -640,6 +673,17 @@ export default function DailyBuyerListScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+      <ManualLocationModal
+        visible={showManualLocationModal}
+        buyerName={manualLocationBuyer?.name || ''}
+        initialLat={37.55012}
+        initialLng={45.06872}
+        onConfirm={handleManualLocationConfirm}
+        onCancel={() => {
+          setShowManualLocationModal(false);
+          setManualLocationBuyer(null);
+        }}
+      />
     </View>
   );
 }

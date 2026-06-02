@@ -3,19 +3,22 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { useFonts } from "expo-font";
+import * as Location from "expo-location";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
-  StatusBar, Text, TouchableOpacity, View
+  AppState,
+  Linking,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { CartProvider } from "./CartContext";
 import { getCurrentRoute, navigationRef } from "./navigationService";
-import {
-  startAutoSendLocation,
-  stopAutoSendLocation
-} from './services/locationService';
 
 // صفحات
 import BuyerListScreen from "./screens/BuyerListScreen";
@@ -26,7 +29,7 @@ import CustomerRequestsScreen from "./screens/CustomerRequestsScreen";
 import DeliveryOrdersScreen from "./screens/DeliveryOrdersScreen";
 import EditInvoiceScreen from "./screens/EditInvoiceScreen";
 import HomeScreen from "./screens/HomeScreen";
-import InvoiceItemsScreen from './screens/InvoiceItemsScreen';
+import InvoiceItemsScreen from "./screens/InvoiceItemsScreen";
 import InvoicesScreen from "./screens/InvoicesScreen";
 import LearnChatBot from "./screens/LearnChatBot";
 import LoginScreen from "./screens/LoginScreen";
@@ -39,262 +42,421 @@ import ProfileScreen from "./screens/ProfileScreen";
 import ReportScreen from "./screens/ReportScreen";
 import SellerPerformanceScreen from "./screens/SellerPerformanceScreen";
 
-// کامپوننت منوی جانبی
 import SideMenu from "./components/MenuItems";
-
-// استایل جدا
 import styles from "./styles/App.styles";
 
+// ─── import سرویس لوکیشن ───
+import {
+  startAutoSendLocation,
+  stopAutoSendLocation,
+} from "./services/locationService";
+
 const Stack = createStackNavigator();
-const APP_CONFIG = {
-  LOCATION_TRACKING_ENABLED: true,
-};
+const APP_CONFIG = { LOCATION_TRACKING_ENABLED: true };
+
+// ─────────────────────────────────────────────────────────
 // Error Boundary
+// ─────────────────────────────────────────────────────────
 class AppErrorBoundary extends React.Component {
   state = { hasError: false };
-
-  static getDerivedStateFromError(error) {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error, errorInfo) {
-    console.warn("⚠️ App Error:", error.message);
-  }
-
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error) { console.warn("⚠️ App Error:", error.message); }
   render() {
     if (this.state.hasError) {
       return (
-        <View
-          style={{
-            flex: 1,
-            justifyContent: "center",
-            alignItems: "center",
-            backgroundColor: "#010b35ff",
-          }}
-        >
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#010b35ff" }}>
           <Text style={{ color: "white", fontSize: 18 }}>مشکلی پیش آمد</Text>
-          <Text style={{ color: "white", marginTop: 10 }}>
-            لطفاً برنامه را restart کنید
-          </Text>
+          <Text style={{ color: "white", marginTop: 10 }}>لطفاً برنامه را restart کنید</Text>
         </View>
       );
     }
-
     return this.props.children;
   }
 }
 
-// تابع کمکی برای دریافت اطلاعات کاربر و buyerCode
-// در App.js، تابع getUserInfo را اینطور اصلاح کنید:
-const getUserInfo = async () => {
-  try {
-    const userData = await AsyncStorage.getItem("user");
-    if (!userData) return { user: null, buyerCode: null, userType: null };
+// ─────────────────────────────────────────────────────────
+// 🔐 Gate مجوز لوکیشن
+// ─────────────────────────────────────────────────────────
+const LocationPermissionGate = ({ onPermissionsGranted }) => {
+  const [checking, setChecking] = useState(true);
+  const [requesting, setRequesting] = useState(false);
+  const [permStatus, setPermStatus] = useState(null);
 
-    const user = JSON.parse(userData);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        checkStatus();
+      }
+    });
+    return () => subscription.remove();
+  }, []);
 
-    // 🔥 تشخیص صحیح نوع کاربر
-    let buyerCode = null;
-    let userType = 'seller'; // پیش‌فرض
+  useEffect(() => {
+    checkStatus();
+  }, []);
 
-    if (user.role === 'delivery' || user.UserType === 'delivery') {
-      userType = 'delivery';
-    } else if (user.role === 'customer' || user.UserType === 'customer') {
-      userType = 'customer';
-      buyerCode = user.NOF || user.id || null;
+  const checkStatus = async () => {
+    setChecking(true);
+    try {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      console.log("📍 Gate permission check:", status);
+
+      if (status !== "granted") {
+        setPermStatus("denied");
+        setChecking(false);
+        return;
+      }
+
+      const providerStatus = await Location.getProviderStatusAsync();
+      console.log("📍 Provider:", providerStatus);
+
+      if (!providerStatus.locationServicesEnabled) {
+        setPermStatus("gps_off");
+      } else {
+        onPermissionsGranted();
+      }
+    } catch (e) {
+      console.warn("⚠️ Gate check error:", e.message);
+      setPermStatus("denied");
+    } finally {
+      setChecking(false);
     }
-    return { user, buyerCode, userType };
-  } catch (error) {
-    console.warn("⚠️ Error getting user info:", error);
-    return { user: null, buyerCode: null, userType: null };
+  };
+
+  const handleRequest = async () => {
+    setRequesting(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      console.log("📍 Permission request result:", status);
+
+      if (status === "granted") {
+        // بعد از grant هم provider رو چک کن
+        const providerStatus = await Location.getProviderStatusAsync();
+        if (!providerStatus.locationServicesEnabled) {
+          setPermStatus("gps_off");
+        } else {
+          onPermissionsGranted();
+        }
+      } else {
+        setPermStatus("denied");
+        Alert.alert(
+          "دسترسی رد شد",
+          "برای استفاده از اپلیکیشن باید موقعیت را از تنظیمات دستگاه فعال کنید.",
+          [
+            { text: "رفتن به تنظیمات", onPress: () => Linking.openSettings() },
+            { text: "بعداً", style: "cancel" },
+          ]
+        );
+      }
+    } catch (e) {
+      console.warn("⚠️ Request error:", e.message);
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  if (checking) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#010b35ff" }}>
+        <StatusBar barStyle="light-content" backgroundColor="#010b35ff" />
+        <ActivityIndicator size="large" color="#4f7eff" />
+        <Text style={{ color: "#fff", marginTop: 16, fontFamily: "IRANYekan", fontSize: 14 }}>
+          در حال بررسی دسترسی‌ها...
+        </Text>
+      </View>
+    );
   }
+
+  return (
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#010b35ff", padding: 32 }}>
+      <StatusBar barStyle="light-content" backgroundColor="#010b35ff" />
+
+      <View style={{
+        width: 100, height: 100, borderRadius: 50,
+        backgroundColor: "rgba(6,34,163,0.35)",
+        justifyContent: "center", alignItems: "center",
+        marginBottom: 32,
+        borderWidth: 1, borderColor: "rgba(79,126,255,0.3)",
+      }}>
+        <FontAwesome name="map-marker" size={48} color="#4f7eff" />
+      </View>
+
+      <Text style={{ color: "#fff", fontSize: 22, fontFamily: "IRANYekan-Bold", textAlign: "center", marginBottom: 16 }}>
+        دسترسی موقعیت الزامی است
+      </Text>
+
+      <Text style={{ color: "#8899cc", fontSize: 14, fontFamily: "IRANYekan", textAlign: "center", lineHeight: 28, marginBottom: 32 }}>
+        این اپلیکیشن برای ردیابی ویزیتور نیاز به{"\n"}
+        دسترسی موقعیت مکانی شما دارد.{"\n"}
+        بدون این مجوز امکان ورود وجود ندارد.
+      </Text>
+
+      {permStatus === "denied" && (
+        <View style={{
+          backgroundColor: "rgba(220,53,69,0.15)", borderRadius: 10, padding: 12,
+          marginBottom: 16, width: "100%",
+          borderWidth: 1, borderColor: "rgba(220,53,69,0.3)",
+        }}>
+          <Text style={{ color: "#ff6b6b", fontSize: 13, fontFamily: "IRANYekan", textAlign: "center" }}>
+            ⚠️ دسترسی رد شده — لطفاً از تنظیمات فعال کنید
+          </Text>
+        </View>
+      )}
+
+      {permStatus === "gps_off" && (
+        <View style={{
+          backgroundColor: "rgba(255,140,0,0.15)", borderRadius: 10, padding: 12,
+          marginBottom: 16, width: "100%",
+          borderWidth: 1, borderColor: "rgba(255,140,0,0.3)",
+        }}>
+          <Text style={{ color: "#ffaa44", fontSize: 13, fontFamily: "IRANYekan", textAlign: "center" }}>
+            ⚠️ لوکیشن دستگاه خاموش است — لطفاً GPS را روشن کنید
+          </Text>
+        </View>
+      )}
+
+      <TouchableOpacity
+        onPress={
+          permStatus === "denied" || permStatus === "gps_off"
+            ? () => Linking.openSettings()
+            : handleRequest
+        }
+        disabled={requesting}
+        style={{
+          backgroundColor: "#0622a3", paddingVertical: 16,
+          borderRadius: 14, width: "100%", alignItems: "center",
+          marginBottom: 14, opacity: requesting ? 0.7 : 1,
+          borderWidth: 1, borderColor: "rgba(79,126,255,0.4)",
+        }}
+        activeOpacity={0.8}
+      >
+        {requesting ? (
+          <ActivityIndicator color="#fff" size="small" />
+        ) : (
+          <Text style={{ color: "#fff", fontSize: 16, fontFamily: "IRANYekan-Bold" }}>
+            {permStatus === "denied"
+              ? "رفتن به تنظیمات"
+              : permStatus === "gps_off"
+              ? "روشن کردن GPS"
+              : "فعال‌سازی موقعیت"}
+          </Text>
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={checkStatus} activeOpacity={0.7} style={{ padding: 8 }}>
+        <Text style={{ color: "#4f7eff", fontSize: 13, fontFamily: "IRANYekan" }}>
+          بررسی مجدد دسترسی
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
 };
 
-// 🔥 کامپوننت دکمه خانه برای هدر
+// ─────────────────────────────────────────────────────────
+// دکمه خانه در هدر
+// ─────────────────────────────────────────────────────────
 const HomeHeaderButton = ({ navigation }) => (
   <TouchableOpacity
     onPress={() => navigation.navigate("Home")}
-    style={{
-      marginRight: 15,
-      padding: 8,
-      borderRadius: 8,
-      backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    }}
+    style={{ marginRight: 15, padding: 8, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.2)" }}
     activeOpacity={0.7}
   >
     <FontAwesome name="home" size={20} color="#fff" />
   </TouchableOpacity>
 );
 
+// ─────────────────────────────────────────────────────────
+// App اصلی
+// ─────────────────────────────────────────────────────────
 export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [locationChecking, setLocationChecking] = useState(true);
+  const [locationGranted, setLocationGranted] = useState(false);
   const [currentRouteName, setCurrentRouteName] = useState("");
   const [user, setUser] = useState(null);
-  const [userType, setUserType] = useState('seller');
+  const [userType, setUserType] = useState("seller");
   const [buyerCode, setBuyerCode] = useState(null);
   const [overlayAnimation] = useState(new Animated.Value(0));
+
+  // 🔥 ref برای نگه داشتن interval لوکیشن
+  const locationIntervalRef = useRef(null);
 
   const [fontsLoaded] = useFonts({
     IRANYekan: require("./assets/fonts/IRANYekanMediumFaNum.ttf"),
     "IRANYekan-Bold": require("./assets/fonts/IRANYekanRegularFaNum.ttf"),
   });
 
+  // ─── SplashScreen + چک مجوز اولیه ───
   useEffect(() => {
-    if (fontsLoaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded]);
-// ✅ بررسی وضعیت لاگین و دریافت اطلاعات کاربر
-useEffect(() => {
-  const checkAuthStatus = async () => {
-    try {
-      const token = await AsyncStorage.getItem("token");
-      const userData = await AsyncStorage.getItem("user");
+    if (!fontsLoaded) return;
+    SplashScreen.hideAsync();
 
-      if (token && userData) {
-        const user = JSON.parse(userData);
+    const initPermissions = async () => {
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        console.log("📍 Initial permission status:", status);
 
-        // تشخیص نوع کاربر
-        let userType = 'seller';
-        let buyerCode = null;
-
-        if (user.role === 'delivery' || user.UserType === 'delivery') {
-          userType = 'delivery';
-        } else if (user.role === 'customer' || user.UserType === 'customer') {
-          userType = 'customer';
-          buyerCode = user.NOF || user.id || null;
+        if (status !== "granted") {
+          setLocationGranted(false);
+          setLocationChecking(false);
+          return;
         }
 
-        setIsLoggedIn(true);
-        setUser(user);
-        setUserType(userType);
-        setBuyerCode(buyerCode);
-
-        console.log('👤 Initial User Info:', {
-          name: user.NameF || user.name,
-          type: userType,
-          buyerCode: buyerCode,
-          NOF: user.NOF,
-          id: user.id
-        });
-
-        // ❌ حذف کامل این بخش - سرویس لوکیشن نباید اینجا شروع بشه
-        // این قسمت باعث میشه قبل از لاگین واقعی، لوکیشن ثبت بشه
-        
-        // 🔥 فقط لاگ بزن که کاربر از قبل لاگین بوده
-        console.log('✅ User already logged in, location service will start after navigation');
-
+        const providerStatus = await Location.getProviderStatusAsync();
+        console.log("📍 Provider status:", providerStatus);
+        setLocationGranted(providerStatus.locationServicesEnabled);
+      } catch (e) {
+        console.warn("⚠️ Permission init error:", e.message);
+        setLocationGranted(false);
+      } finally {
+        setLocationChecking(false);
       }
-    } catch (err) {
-      console.warn("⚠️ Auth check warning:", err.message);
-    } finally {
-      setLoading(false);
+    };
+
+    initPermissions();
+  }, [fontsLoaded]);
+
+  // ─── بررسی وضعیت لاگین ───
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        const userData = await AsyncStorage.getItem("user");
+        if (token && userData) {
+          const parsedUser = JSON.parse(userData);
+          const { resolvedUserType, resolvedBuyerCode } = resolveUserType(parsedUser);
+          setIsLoggedIn(true);
+          setUser(parsedUser);
+          setUserType(resolvedUserType);
+          setBuyerCode(resolvedBuyerCode);
+        }
+      } catch (err) {
+        console.warn("⚠️ Auth check:", err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    checkAuthStatus();
+  }, []);
+
+  // ─── انیمیشن منو ───
+  useEffect(() => {
+    Animated.timing(overlayAnimation, {
+      toValue: menuOpen ? 1 : 0,
+      duration: menuOpen ? 250 : 200,
+      useNativeDriver: true,
+    }).start();
+  }, [menuOpen]);
+
+  // ─────────────────────────────────────────────
+  // 🔥 شروع ارسال لوکیشن هر ۶۰ ثانیه
+  // ─────────────────────────────────────────────
+  const startLocationTracking = async (parsedUser) => {
+    if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) return;
+
+    try {
+      // توقف interval قبلی اگه وجود داشت
+      if (locationIntervalRef.current) {
+        clearInterval(locationIntervalRef.current);
+        locationIntervalRef.current = null;
+      }
+
+      const visitorInfo = {
+        VisitorCode:
+          parsedUser.userId?.toString() ||
+          parsedUser.UserID?.toString() ||
+          parsedUser.id?.toString() ||
+          parsedUser.NOF?.toString() ||
+          "unknown",
+        VisitorName:
+          parsedUser.NameF ||
+          parsedUser.name ||
+          parsedUser.FullName ||
+          "Unknown User",
+      };
+
+      console.log("📍 Starting location tracking for:", visitorInfo);
+      await AsyncStorage.setItem("visitor_info", JSON.stringify(visitorInfo));
+
+      // شروع سرویس (که خودش هم interval داره)
+      await startAutoSendLocation(visitorInfo, {
+        intervalMs: 60000,   // هر ۶۰ ثانیه
+        minInterval: 10000,  // حداقل ۱۰ ثانیه فاصله
+      });
+
+      console.log("✅ Location tracking started successfully");
+    } catch (e) {
+      console.warn("⚠️ Location tracking error:", e.message);
     }
   };
 
-  checkAuthStatus();
-}, []);
-  // ✅ انیمیشن دکمه منو
-  useEffect(() => {
-    if (menuOpen) {
-      Animated.timing(overlayAnimation, {
-        toValue: 1,
-        duration: 250,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      Animated.timing(overlayAnimation, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
+  const stopLocationTracking = () => {
+    stopAutoSendLocation();
+    if (locationIntervalRef.current) {
+      clearInterval(locationIntervalRef.current);
+      locationIntervalRef.current = null;
     }
-  }, [menuOpen]);
+    console.log("⏹ Location tracking stopped");
+  };
 
-  // ✅ هندل موفقیت لاگین
-const handleLoginSuccess = async (userData) => {
-  try {
-    setIsLoggedIn(true);
-
-    // از پارامتر استفاده کن، نه فقط AsyncStorage
-    const user = userData || JSON.parse(await AsyncStorage.getItem("user"));
-    if (!user) { 
-      setIsLoggedIn(false); 
-      return; 
+  // ─────────────────────────────────────────────
+  // تابع کمکی نوع کاربر
+  // ─────────────────────────────────────────────
+  const resolveUserType = (userObj) => {
+    let resolvedUserType = "seller";
+    let resolvedBuyerCode = null;
+    if (userObj.role === "delivery" || userObj.UserType === "delivery") {
+      resolvedUserType = "delivery";
+    } else if (userObj.role === "customer" || userObj.UserType === "customer") {
+      resolvedUserType = "customer";
+      resolvedBuyerCode = userObj.NOF || userObj.id || null;
     }
+    return { resolvedUserType, resolvedBuyerCode };
+  };
 
-    setUser(user);
-
-    let userType = 'seller';
-    let buyerCode = null;
-
-    if (user.role === 'delivery' || user.UserType === 'delivery') {
-      userType = 'delivery';
-    } else if (user.role === 'customer' || user.UserType === 'customer') {
-      userType = 'customer';
-      buyerCode = user.NOF || user.id || null;
-    }
-
-    setUserType(userType);
-    setBuyerCode(buyerCode);
-
-    console.log('✅ User Info Loaded:', {
-      name: user.NameF || user.name,
-      type: userType,
-      buyerCode: buyerCode,
-      NOF: user.NOF,
-      id: user.id
-    });
-
-    setMenuOpen(false);
-
-  // 🔥 شروع سرویس لوکیشن در پس‌زمینه - بدون block کردن لاگین
-if (APP_CONFIG.LOCATION_TRACKING_ENABLED && 
-    (userType === 'seller')) {
-  
-  setTimeout(async () => {
+  // ─────────────────────────────────────────────
+  // هندل لاگین
+  // ─────────────────────────────────────────────
+  const handleLoginSuccess = async (userData) => {
     try {
-      console.log('📍 Starting location service in background...');
+      const parsedUser = userData || JSON.parse(await AsyncStorage.getItem("user"));
+      if (!parsedUser) { setIsLoggedIn(false); return; }
 
-      const visitorInfo = {
-        VisitorCode: user.userId?.toString() || 
-                    user.id?.toString() || 
-                    user.NOF?.toString() || 
-                    user.UserID?.toString() ||
-                    'unknown',
-        VisitorName: user.NameF || 
-                    user.name || 
-                    user.FullName || 
-                    'Unknown User'
-      };
+      const { resolvedUserType, resolvedBuyerCode } = resolveUserType(parsedUser);
+      setIsLoggedIn(true);
+      setUser(parsedUser);
+      setUserType(resolvedUserType);
+      setBuyerCode(resolvedBuyerCode);
+      setMenuOpen(false);
 
-      await AsyncStorage.setItem('visitor_info', JSON.stringify(visitorInfo));
-      await startAutoSendLocation(visitorInfo, {
-        intervalMs: 60000,
-        minInterval: 10000
+      console.log("✅ Login success:", {
+        name: parsedUser.name || parsedUser.NameF,
+        type: resolvedUserType,
+        userId: parsedUser.userId || parsedUser.id,
       });
 
-      console.log('✅ Location service started in background');
-    } catch (locationError) {
-      console.warn('⚠️ Location service failed (non-blocking):', locationError.message);
+      // 🔥 فقط برای seller لوکیشن شروع کن
+      if (resolvedUserType === "seller") {
+        // setTimeout تا login کامل بشه اول
+        setTimeout(() => startLocationTracking(parsedUser), 500);
+      }
+    } catch (err) {
+      console.warn("⚠️ Login warning:", err.message);
+      setIsLoggedIn(false);
     }
-  }, 0);
-}
+  };
 
-  } catch (err) {
-    console.warn("⚠️ Login success warning:", err.message);
-    setIsLoggedIn(false);
-  }
-};
-  // ✅ هندل خروج
+  // ─────────────────────────────────────────────
+  // هندل خروج
+  // ─────────────────────────────────────────────
   const handleLogout = async () => {
     try {
-      stopAutoSendLocation();
+      stopLocationTracking(); // 🔥 توقف لوکیشن
       setIsLoggedIn(false);
       setUser(null);
-      setUserType('seller');
+      setUserType("seller");
       setBuyerCode(null);
       setMenuOpen(false);
     } catch (err) {
@@ -302,13 +464,10 @@ if (APP_CONFIG.LOCATION_TRACKING_ENABLED &&
     }
   };
 
-  // ✅ هندل باز کردن منو
-  const handleOpenMenu = async () => {
-    setMenuOpen((prev) => !prev);
-  };
-
-  // ✅ صفحه loading
-  if (loading || !fontsLoaded) {
+  // ─────────────────────────────────────────────
+  // Loading
+  // ─────────────────────────────────────────────
+  if (loading || !fontsLoaded || locationChecking) {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar barStyle="light-content" backgroundColor="#0c0116ff" />
@@ -324,6 +483,22 @@ if (APP_CONFIG.LOCATION_TRACKING_ENABLED &&
     );
   }
 
+  // ─────────────────────────────────────────────
+  // 🔐 Gate
+  // ─────────────────────────────────────────────
+  if (!locationGranted) {
+    return (
+      <AppErrorBoundary>
+        <LocationPermissionGate
+          onPermissionsGranted={() => setLocationGranted(true)}
+        />
+      </AppErrorBoundary>
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // اپ اصلی
+  // ─────────────────────────────────────────────
   return (
     <AppErrorBoundary>
       <CartProvider>
@@ -338,259 +513,65 @@ if (APP_CONFIG.LOCATION_TRACKING_ENABLED &&
             <StatusBar
               barStyle={isLoggedIn ? "dark-content" : "light-content"}
               backgroundColor="transparent"
-              style={{ fontFamily: "IRANYekan" }}
               translucent
             />
-
             <Stack.Navigator
               screenOptions={({ navigation, route }) => ({
-                headerStyle: {
-                  backgroundColor: "#0622a3ff",
-                  elevation: 0,
-                  shadowOpacity: 0,
-                },
+                headerStyle: { backgroundColor: "#0622a3ff", elevation: 0, shadowOpacity: 0 },
                 headerTintColor: "#fff",
-                headerTitleStyle: {
-                  fontFamily: "IRANYekan",
-                  fontSize: 15,
-                },
+                headerTitleStyle: { fontFamily: "IRANYekan", fontSize: 15 },
                 headerTitleAlign: "center",
-                // 🔥 اضافه کردن دکمه خانه در تمام صفحات به جز صفحه اصلی
                 headerRight: () =>
-                  route.name !== "Home" && (
-                    <HomeHeaderButton navigation={navigation} />
-                  ),
+                  route.name !== "Home" && <HomeHeaderButton navigation={navigation} />,
               })}
             >
               {isLoggedIn ? (
-                // ✅ صفحات کاربر لاگین شده
                 <>
-                  <Stack.Screen
-                    name="Home"
-                    options={{ headerShown: false }}
-                  >
+                  <Stack.Screen name="Home" options={{ headerShown: false }}>
                     {(props) => (
                       <HomeScreen
                         {...props}
                         route={{
                           ...props.route,
-                          params: {
-                            ...props.route.params,
-                            onLogout: handleLogout,
-                            userType: userType,
-                            buyerCode: buyerCode
-                          }
+                          params: { ...props.route.params, onLogout: handleLogout, userType, buyerCode },
                         }}
                       />
                     )}
                   </Stack.Screen>
-
-                  <Stack.Screen
-                    name="Profile"
-                    component={ProfileScreen}
-                    options={{ title: "پروفایل" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-
-                  <Stack.Screen
-                    name="Cart"
-                    component={CartScreen}
-                    options={{ title: "سبد خرید" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-
-                  <Stack.Screen
-                    name="ProductGroups"
-                    component={ProductGroupsScreen}
-                    options={{ title: "گروه کالاها" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-
-                  <Stack.Screen
-                    name="ProductList"
-                    component={ProductListScreen}
-                    options={{ title: "کالاها" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-
-                  <Stack.Screen
-                    name="Search"
-                    component={ProductListScreen}
-                    options={{ title: "جستجو" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-
-                  <Stack.Screen
-                    name="Report"
-                    component={ReportScreen}
-                    options={{ title: "گزارش فاکتورها" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-
-                  <Stack.Screen
-                    name="BuyerList"
-                    component={BuyerListScreen}
-                    options={{ title: "لیست مشتری‌ها" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-
-                  <Stack.Screen
-                    name="CustomerRegistration"
-                    component={CustomerRegistration}
-                    options={{ title: "تعریف مشتری جدید" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-
-                  <Stack.Screen
-                    name="MapBuyer"
-                    component={MapBuyerScreen}
-                    options={{ title: "نقشه مشتری‌ها" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-
-                  <Stack.Screen
-                    name="Invoices"
-                    component={InvoicesScreen}
-                    options={{ title: "فاکتورها" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-
-                  <Stack.Screen
-                    name="EditInvoice"
-                    component={EditInvoiceScreen}
-                    options={{
-                      title: "ویرایش فاکتور",
-                      // 🔥 غیرفعال کردن دکمه خانه در صفحه EditInvoice
-                      headerRight: null
-                    }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-
-                  <Stack.Screen
-                    name="OrderReport"
-                    component={OrderReportScreen}
-                    options={{ title: "گزارش سفارشات" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-
-                  <Stack.Screen
-                    name="Chat"
-                    component={ChatScreen}
-                    options={{ title: "پیام رسانی" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-
-                  <Stack.Screen
-                    name="SellerPerformance"
-                    component={SellerPerformanceScreen}
-                    options={{ title: "عملکرد فروشنده" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-                  <Stack.Screen
-                    name="CustomerRequests"
-                    component={CustomerRequestsScreen}
-                    options={{ title: "درخواست‌های من" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-                  <Stack.Screen
-                    name="DeliveryOrdersScreen"
-                    component={DeliveryOrdersScreen}
-                    options={{ title: "خروجی کالا" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-                  <Stack.Screen
-                    name="MapDeliveri"
-                    component={MapDeliveriScreen}
-                    options={{ title: "نقشه تحویل" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
-                  <Stack.Screen
-                    name="InvoiceItems"
-                    component={InvoiceItemsScreen}
-                    options={{ title: 'اقلام فاکتور' }}
-                  />
-
-                  <Stack.Screen
-                    name="LearnChatBot"
-                    component={LearnChatBot}
-                    options={{ title: "آموزش اپلیکیشن" }}
-                    initialParams={{
-                      userType: userType,
-                      buyerCode: buyerCode
-                    }}
-                  />
+                  <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: "پروفایل" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="Cart" component={CartScreen} options={{ title: "سبد خرید" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="ProductGroups" component={ProductGroupsScreen} options={{ title: "گروه کالاها" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="ProductList" component={ProductListScreen} options={{ title: "کالاها" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="Search" component={ProductListScreen} options={{ title: "جستجو" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="Report" component={ReportScreen} options={{ title: "گزارش فاکتورها" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="BuyerList" component={BuyerListScreen} options={{ title: "لیست مشتری‌ها" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="CustomerRegistration" component={CustomerRegistration} options={{ title: "تعریف مشتری جدید" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="MapBuyer" component={MapBuyerScreen} options={{ title: "نقشه مشتری‌ها" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="Invoices" component={InvoicesScreen} options={{ title: "فاکتورها" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="EditInvoice" component={EditInvoiceScreen} options={{ title: "ویرایش فاکتور", headerRight: null }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="OrderReport" component={OrderReportScreen} options={{ title: "گزارش سفارشات" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="Chat" component={ChatScreen} options={{ title: "پیام رسانی" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="SellerPerformance" component={SellerPerformanceScreen} options={{ title: "عملکرد فروشنده" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="CustomerRequests" component={CustomerRequestsScreen} options={{ title: "درخواست‌های من" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="DeliveryOrdersScreen" component={DeliveryOrdersScreen} options={{ title: "خروجی کالا" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="MapDeliveri" component={MapDeliveriScreen} options={{ title: "نقشه تحویل" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="InvoiceItems" component={InvoiceItemsScreen} options={{ title: "اقلام فاکتور" }} />
+                  <Stack.Screen name="LearnChatBot" component={LearnChatBot} options={{ title: "آموزش اپلیکیشن" }} initialParams={{ userType, buyerCode }} />
                 </>
               ) : (
-                // ✅ صفحه لاگین
                 <Stack.Screen name="LoginScreen" options={{ headerShown: false }}>
-                  {(props) => (
-                    <LoginScreen {...props} onLoginSuccess={handleLoginSuccess} />
-                  )}
+                  {(props) => <LoginScreen {...props} onLoginSuccess={handleLoginSuccess} />}
                 </Stack.Screen>
               )}
             </Stack.Navigator>
 
-            {/* ✅ منو جانبی - فقط وقتی لاگین هستیم */}
             {isLoggedIn && currentRouteName !== "EditInvoice" && (
-              <>
-                <SideMenu
-                  isOpen={menuOpen}
-                  onClose={() => setMenuOpen(false)}
-                  user={user}
-                  onLogout={handleLogout}
-                />
-              </>
+              <SideMenu
+                isOpen={menuOpen}
+                onClose={() => setMenuOpen(false)}
+                user={user}
+                onLogout={handleLogout}
+              />
             )}
           </View>
         </NavigationContainer>
