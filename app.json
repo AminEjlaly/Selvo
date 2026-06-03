@@ -6,11 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/back3.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/back3.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -120,7 +115,7 @@
         "foregroundImage": "./assets/back2.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
+     
       "package": "com.itsamin.avaapp",
       "versionCode": 2,
       "permissions": [
@@ -166,14 +161,9 @@
           "apiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
         }
       },
-      "usesCleartextTraffic": true,
+     
       "allowBackup": true,
-      "softwareKeyboardLayoutMode": "pan",
-      "permissionsCustom": {
-        "WRITE_EXTERNAL_STORAGE": {
-          "maxSdkVersion": 28
-        }
-      }
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "favicon": "./assets/favicon.png",
