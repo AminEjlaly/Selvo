@@ -99,22 +99,23 @@ const LocationPermissionGate = ({ onPermissionsGranted }) => {
     setChecking(true);
     try {
       const { status } = await Location.getForegroundPermissionsAsync();
-      console.log("📍 Gate permission check:", status);
-
       if (status !== "granted") {
         setPermStatus("denied");
         setChecking(false);
         return;
       }
 
-      const providerStatus = await Location.getProviderStatusAsync();
-      console.log("📍 Provider:", providerStatus);
-
-      if (!providerStatus.locationServicesEnabled) {
-        setPermStatus("gps_off");
-      } else {
-        onPermissionsGranted();
+      // ─── GPS واقعی رو تست کن ───
+      try {
+        await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Lowest,
+          timeout: 10000,
+        });
+        onPermissionsGranted(); // موفق شد → باز کن
+      } catch {
+        setPermStatus("gps_off"); // نشد → قفل بمون
       }
+
     } catch (e) {
       console.warn("⚠️ Gate check error:", e.message);
       setPermStatus("denied");
@@ -237,8 +238,8 @@ const LocationPermissionGate = ({ onPermissionsGranted }) => {
             {permStatus === "denied"
               ? "رفتن به تنظیمات"
               : permStatus === "gps_off"
-              ? "روشن کردن GPS"
-              : "فعال‌سازی موقعیت"}
+                ? "روشن کردن GPS"
+                : "فعال‌سازی موقعیت"}
           </Text>
         )}
       </TouchableOpacity>
@@ -298,15 +299,41 @@ export default function App() {
         const { status } = await Location.getForegroundPermissionsAsync();
         console.log("📍 Initial permission status:", status);
 
-        if (status !== "granted") {
+        if (status === "granted") {
+          // مجوز داریم → GPS رو تست کن
+          try {
+            await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Lowest,
+              timeout: 10000,
+            });
+            setLocationGranted(true);
+          } catch (posError) {
+            console.warn("⚠️ GPS not available:", posError.message);
+            setLocationGranted(false);
+          }
+        } else if (status === "undetermined") {
+          // هنوز نپرسیدیم → درخواست بده
+          const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
+          console.log("📍 Permission requested, result:", newStatus);
+
+          if (newStatus === "granted") {
+            try {
+              await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.Lowest,
+                timeout: 10000,
+              });
+              setLocationGranted(true);
+            } catch {
+              setLocationGranted(false);
+            }
+          } else {
+            setLocationGranted(false);
+          }
+        } else {
+          // denied → Gate نشون بده تا بره تنظیمات
           setLocationGranted(false);
-          setLocationChecking(false);
-          return;
         }
 
-        const providerStatus = await Location.getProviderStatusAsync();
-        console.log("📍 Provider status:", providerStatus);
-        setLocationGranted(providerStatus.locationServicesEnabled);
       } catch (e) {
         console.warn("⚠️ Permission init error:", e.message);
         setLocationGranted(false);
@@ -350,6 +377,35 @@ export default function App() {
     }).start();
   }, [menuOpen]);
 
+  // ─── 🔒 نگهبان GPS: قفل برنامه اگه GPS خاموش شد ───
+  useEffect(() => {
+    if (!locationGranted) return;
+
+    const subscription = AppState.addEventListener("change", async (nextState) => {
+      if (nextState === "active") {
+        try {
+          const { status } = await Location.getForegroundPermissionsAsync();
+          if (status !== "granted") {
+            setLocationGranted(false);
+            return;
+          }
+          // ─── تست واقعی به جای providerStatus ───
+          try {
+            await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Lowest,
+              timeout: 8000,
+            });
+          } catch {
+            setLocationGranted(false); // GPS خاموشه → قفل کن
+          }
+        } catch (e) {
+          console.warn("⚠️ GPS re-check:", e.message);
+        }
+      }
+    });
+
+    return () => subscription.remove();
+  }, [locationGranted]);
   // ─────────────────────────────────────────────
   // 🔥 شروع ارسال لوکیشن هر ۶۰ ثانیه
   // ─────────────────────────────────────────────

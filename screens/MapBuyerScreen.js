@@ -765,7 +765,24 @@ export default function MapBuyerScreen({ route }) {
     } catch (e) {}
   };
 
-  const focusOnUser      = () => safePost({ type: 'focusUser' });
+  const focusOnUser = async () => {
+  // اگه لوکیشن داریم مستقیم بفرست و فوکوس کن
+  if (dataRef.current.userLocation) {
+    const loc = dataRef.current.userLocation;
+    // اول مطمئن شو marker روی نقشه هست
+    safePost({ type: 'updateUserLocation', lat: loc.lat, lng: loc.lng });
+    // بعد از کمی تاخیر فوکوس کن
+    setTimeout(() => {
+      safePost({ type: 'focusUser' });
+    }, 300);
+  } else {
+    // لوکیشن نداریم، بگیر
+    await updateUserLocation();
+    setTimeout(() => {
+      safePost({ type: 'focusUser' });
+    }, 500);
+  }
+};
   const toggleAllCircles = (show) => safePost({ type: show ? 'showAllCircles' : 'hideAllCircles' });
 
   if (loading && !initialMapBuilt) {
