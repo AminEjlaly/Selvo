@@ -1,10 +1,14 @@
 // CustomerRegistration.js
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Device from 'expo-device';
+import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Modal,
   ScrollView,
   Text,
@@ -18,7 +22,8 @@ import {
   getCities,
   getMasir,
   getNewBuyerCode,
-  getSanf
+  getSanf,
+  uploadCustomerPhotos
 } from '../api';
 import ManualLocationModal from '../components/ManualLocationModal';
 import styles from '../styles/CustomerRegistrationStyles';
@@ -61,9 +66,9 @@ const validators = {
     if (value.length > 50) return 'تابلو نمی‌تواند بیش از ۵۰ کاراکتر باشد';
     return null;
   },
-  city: (value) => (!value ? 'انتخاب شهر الزامی است' : null),
+  city:  (value) => (!value ? 'انتخاب شهر الزامی است'  : null),
   masir: (value) => (!value ? 'انتخاب مسیر الزامی است' : null),
-  sanf: (value) => (!value ? 'انتخاب صنف الزامی است' : null),
+  sanf:  (value) => (!value ? 'انتخاب صنف الزامی است'  : null),
 };
 
 const formatPhoneNumber = (value, isMobile = false) => {
@@ -78,25 +83,32 @@ const formatPhoneNumber = (value, isMobile = false) => {
 };
 
 const CustomerRegistration = ({ navigation }) => {
-  const [cities, setCities] = useState([]);
+  const [cities, setCities]       = useState([]);
   const [masirList, setMasirList] = useState([]);
-  const [sanfList, setSanfList] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [sanfList, setSanfList]   = useState([]);
+  const [loading, setLoading]           = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
 
-  const [showCityModal, setShowCityModal] = useState(false);
-  const [showMasirModal, setShowMasirModal] = useState(false);
-  const [showSanfModal, setShowSanfModal] = useState(false);
+  const [showCityModal, setShowCityModal]               = useState(false);
+  const [showMasirModal, setShowMasirModal]             = useState(false);
+  const [showSanfModal, setShowSanfModal]               = useState(false);
   const [showCustomerTypeModal, setShowCustomerTypeModal] = useState(false);
-  const [showTitleModal, setShowTitleModal] = useState(false);
-  const [showOwnershipModal, setShowOwnershipModal] = useState(false);
+  const [showTitleModal, setShowTitleModal]             = useState(false);
+  const [showOwnershipModal, setShowOwnershipModal]     = useState(false);
   const [showManualLocationModal, setShowManualLocationModal] = useState(false);
 
+  // ── عکس‌های مغازه ──────────────────────────────────────────────────────────
+  const [selectedPhotos, setSelectedPhotos] = useState([]); // آرایه uri
+  const [photoError, setPhotoError]         = useState('');
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+
+  // ── اطلاعات دستگاه ─────────────────────────────────────────────────────────
+  const [deviceInfo, setDeviceInfo] = useState('');
+
   // وضعیت لوکیشن
-  const [locationStatus, setLocationStatus] = useState('idle'); // idle | searching | found | failed
+  const [locationStatus, setLocationStatus] = useState('idle');
   const locationTimeoutRef = useRef(null);
 
-  // مختصات اولیه مودال (لوکیشن کاربر اگه پیدا شد، وگرنه ارومیه)
   const [modalInitialLat, setModalInitialLat] = useState(URMIA_LAT);
   const [modalInitialLng, setModalInitialLng] = useState(URMIA_LNG);
 
@@ -112,30 +124,51 @@ const CustomerRegistration = ({ navigation }) => {
   });
 
   const customerTypes = [
-    { label: 'حقیقی', value: 'حقیقی' },
-    { label: 'حقوقی', value: 'حقوقی' },
-    { label: 'حقوقی دولتی', value: 'حقوقی دولتی' }
+    { label: 'حقیقی',        value: 'حقیقی' },
+    { label: 'حقوقی',        value: 'حقوقی' },
+    { label: 'حقوقی دولتی',  value: 'حقوقی دولتی' }
   ];
   const titles = [
-    { label: 'شرکت', value: 'شرکت' }, { label: 'آقای', value: 'آقای' },
-    { label: 'خانم', value: 'خانم' }, { label: 'موسسه', value: 'موسسه' },
-    { label: 'تعاونی', value: 'تعاونی' }, { label: 'درمانگاه', value: 'درمانگاه' },
-    { label: 'بیمارستان', value: 'بیمارستان' }, { label: 'داروخانه', value: 'داروخانه' }
+    { label: 'شرکت',      value: 'شرکت' },    { label: 'آقای',     value: 'آقای' },
+    { label: 'خانم',      value: 'خانم' },    { label: 'موسسه',    value: 'موسسه' },
+    { label: 'تعاونی',    value: 'تعاونی' },  { label: 'درمانگاه', value: 'درمانگاه' },
+    { label: 'بیمارستان', value: 'بیمارستان' },{ label: 'داروخانه', value: 'داروخانه' }
   ];
   const ownershipTypes = [
-    { label: 'مالک', value: 'مالک' },
-    { label: 'اجاره', value: 'اجاره' },
+    { label: 'مالک',    value: 'مالک' },
+    { label: 'اجاره',   value: 'اجاره' },
     { label: 'نامعلوم', value: 'نامعلوم' }
   ];
 
   useEffect(() => {
     loadInitialData();
+    
+    // گرفتن اطلاعات دستگاه
+    const getDeviceInfo = async () => {
+      try {
+        const deviceName = Device.deviceName || 'Unknown';
+        const modelName  = Device.modelName || Device.modelId || 'Unknown';
+        const osName     = Device.osName || 'Unknown';
+        const osVersion  = Device.osVersion || '';
+        const manufacturer = Device.manufacturer || '';
+
+        const info = `${deviceName} | ${manufacturer} ${modelName} | ${osName} ${osVersion}`;
+        setDeviceInfo(info.trim());
+        console.log('📱 Device Info:', info);
+      } catch (e) {
+        console.warn('⚠️ Could not get device info:', e);
+        setDeviceInfo('Unknown Device');
+      }
+    };
+
+    getDeviceInfo();
+
     return () => {
       if (locationTimeoutRef.current) clearTimeout(locationTimeoutRef.current);
     };
   }, []);
 
-  // ── ۱. فرم فوری لود می‌شه، لوکیشن در بک‌گراند دنبال می‌شه ──────────────
+  // ── ۱. لود اولیه ─────────────────────────────────────────────────────────
   const loadInitialData = async () => {
     try {
       setInitialLoading(true);
@@ -149,19 +182,27 @@ const CustomerRegistration = ({ navigation }) => {
       Alert.alert('خطا', 'خطا در دریافت اطلاعات اولیه: ' + error.message);
     } finally {
       setInitialLoading(false);
-      // بعد از لود فرم، لوکیشن رو در بک‌گراند دنبال کن
       fetchLocationInBackground();
     }
   };
 
-  // ── ۲. لوکیشن در بک‌گراند با timeout 15 ثانیه ──────────────────────────
+  // ── ۲. لوکیشن در بک‌گراند ────────────────────────────────────────────────
   const fetchLocationInBackground = async () => {
-    setLocationStatus('searching');
+    try {
+      const userStr  = await AsyncStorage.getItem('user');
+      const userData = userStr ? JSON.parse(userStr) : null;
+      const isSeller = !userData ||
+        userData.role === 'seller' ||
+        userData.UserType === 'seller';
 
-    // timeout 15 ثانیه
-    locationTimeoutRef.current = setTimeout(() => {
-      setLocationStatus('failed');
-    }, LOCATION_TIMEOUT_MS);
+      if (!isSeller) {
+        setLocationStatus('failed');
+        return;
+      }
+    } catch {}
+
+    setLocationStatus('searching');
+    locationTimeoutRef.current = setTimeout(() => setLocationStatus('failed'), LOCATION_TIMEOUT_MS);
 
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -170,17 +211,13 @@ const CustomerRegistration = ({ navigation }) => {
         setLocationStatus('failed');
         return;
       }
-
       const loc = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
         timeout: LOCATION_TIMEOUT_MS,
       });
-
       clearTimeout(locationTimeoutRef.current);
-
       const lat = loc.coords.latitude.toString();
       const lng = loc.coords.longitude.toString();
-
       setFormData(prev => ({ ...prev, lat, lng }));
       setModalInitialLat(loc.coords.latitude);
       setModalInitialLng(loc.coords.longitude);
@@ -191,19 +228,110 @@ const CustomerRegistration = ({ navigation }) => {
     }
   };
 
-  // ── ۳. handleSubmit: اگه لوکیشن نداشت، اول مودال باز می‌شه ─────────────
+  // ── ۳. انتخاب عکس از گالری ───────────────────────────────────────────────
+  const handlePickPhotos = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('خطا', 'دسترسی به گالری رد شد. لطفاً از تنظیمات دسترسی دهید.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        quality: 0.7,
+        selectionLimit: 10,
+      });
+
+      if (!result.canceled && result.assets.length > 0) {
+        setSelectedPhotos(result.assets.map(a => a.uri));
+        setPhotoError('');
+      }
+    } catch (error) {
+      Alert.alert('خطا', 'خطا در دسترسی به گالری: ' + error.message);
+    }
+  };
+
+  // ── ۴. عکاسی با دوربین ───────────────────────────────────────────────────
+  const handleTakePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('خطا', 'دسترسی به دوربین رد شد.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        quality: 0.7,
+      });
+      if (!result.canceled && result.assets.length > 0) {
+        setSelectedPhotos(prev => [...prev, result.assets[0].uri]);
+        setPhotoError('');
+      }
+    } catch (error) {
+      Alert.alert('خطا', 'خطا در دسترسی به دوربین: ' + error.message);
+    }
+  };
+
+  // ── ۵. حذف یه عکس از لیست ───────────────────────────────────────────────
+  const handleRemovePhoto = (indexToRemove) => {
+    setSelectedPhotos(prev => prev.filter((_, i) => i !== indexToRemove));
+  };
+
+  // ── ۶. آپلود عکس‌ها ──────────────────────────────────────────────────────
+  const uploadPhotos = async (buyerCode) => {
+    if (selectedPhotos.length === 0) return;
+    setUploadingPhotos(true);
+    try {
+      await uploadCustomerPhotos(buyerCode, selectedPhotos, deviceInfo);
+    } catch (e) {
+      console.warn('⚠️ Photo upload failed:', e.message);
+      Alert.alert('هشدار', 'مشتری ثبت شد ولی آپلود عکس‌ها ناموفق بود');
+    } finally {
+      setUploadingPhotos(false);
+    }
+  };
+
+  // ── ۷. اعتبارسنجی فرم با چک عکس ─────────────────────────────────────────
+  const validateForm = () => {
+    const newErrors = {
+      name:  validators.name(formData.name),
+      tel:   validators.tel(formData.tel),
+      mobile: validators.mobile(formData.mobile),
+      addB:  validators.addB(formData.addB),
+      tblo:  validators.tblo(formData.tblo),
+      city:  validators.city(formData.cityCode),
+      masir: validators.masir(formData.masirCode),
+      sanf:  validators.sanf(formData.codeSF)
+    };
+    setErrors(newErrors);
+
+    if (!formData.tel.trim() && !formData.mobile.trim()) {
+      newErrors.tel    = 'حداقل یکی از تلفن‌ها باید وارد شود';
+      newErrors.mobile = 'حداقل یکی از تلفن‌ها باید وارد شود';
+      setErrors(newErrors);
+      return false;
+    }
+
+    // ── چک عکس اجباری ──
+    if (selectedPhotos.length === 0) {
+      setPhotoError('ثبت حداقل یک عکس از مغازه الزامی است');
+      return false;
+    }
+
+    return !Object.values(newErrors).some(e => e !== null);
+  };
+
+  // ── ۸. handleSubmit ───────────────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!validateForm()) {
       Alert.alert('خطا', 'لطفا خطاهای فرم را برطرف کنید');
       return;
     }
-
-    // اگه لوکیشن ثبت نشده مودال باز می‌شه
     if (!formData.lat || !formData.lng) {
       setShowManualLocationModal(true);
       return;
     }
-
     await doRegister();
   };
 
@@ -211,19 +339,17 @@ const CustomerRegistration = ({ navigation }) => {
     setLoading(true);
     try {
       const duplicateCheck = await checkDuplicateCustomer({
-        name: formData.name.trim(),
-        tel: formData.tel.trim(),
-        mobile: formData.mobile.trim(),
-        addB: formData.addB.trim(),
+        name:     formData.name.trim(),
+        tel:      formData.tel.trim(),
+        mobile:   formData.mobile.trim(),
+        addB:     formData.addB.trim(),
         cityCode: formData.cityCode
       });
-
       if (duplicateCheck.isDuplicate) {
         Alert.alert('خطا', 'مشتری تکراری میباشد');
         return;
       }
-
-      await proceedWithRegistration();
+      await proceedWithRegistration(formData);
     } catch (error) {
       Alert.alert('خطا', error.message || 'خطای ناشناخته در ثبت مشتری');
     } finally {
@@ -240,84 +366,78 @@ const CustomerRegistration = ({ navigation }) => {
     }
   };
 
-  const validateForm = () => {
-    const newErrors = {
-      name: validators.name(formData.name),
-      tel: validators.tel(formData.tel),
-      mobile: validators.mobile(formData.mobile),
-      addB: validators.addB(formData.addB),
-      tblo: validators.tblo(formData.tblo),
-      city: validators.city(formData.cityCode),
-      masir: validators.masir(formData.masirCode),
-      sanf: validators.sanf(formData.codeSF)
-    };
-    setErrors(newErrors);
-    if (!formData.tel.trim() && !formData.mobile.trim()) {
-      newErrors.tel = 'حداقل یکی از تلفن‌ها باید وارد شود';
-      newErrors.mobile = 'حداقل یکی از تلفن‌ها باید وارد شود';
-      setErrors(newErrors);
-      return false;
-    }
-    return !Object.values(newErrors).some(e => e !== null);
-  };
+  // ── ۹. ثبت نهایی + آپلود عکس ─────────────────────────────────────────────
+  const proceedWithRegistration = async (data) => {
+    const buyerCode = await generateBuyerCode(data.cityCode);
 
-  const proceedWithRegistration = async () => {
-    const buyerCode = await generateBuyerCode(formData.cityCode);
+    // ── ۱. اول آپلود عکس ──────────────────────────────
+    setUploadingPhotos(true);
+    try {
+      const uploadResult = await uploadCustomerPhotos(buyerCode, selectedPhotos, deviceInfo);
+      if (!uploadResult.success) {
+        Alert.alert('خطا', 'آپلود عکس‌ها ناموفق بود. لطفاً دوباره امتحان کنید.');
+        return;
+      }
+    } catch (e) {
+      Alert.alert('خطا', 'خطا در آپلود عکس‌ها: ' + e.message);
+      return;
+    } finally {
+      setUploadingPhotos(false);
+    }
+
+    // ── ۲. بعد ثبت مشتری — همه فیلدها کامل ──────────
     const customerData = {
       buyerCode,
-      name: formData.name.trim(),
-      tel: formData.tel.trim(),
-      mobile: formData.mobile.trim(),
-      addB: formData.addB.trim(),
-      cityCode: formData.cityCode,
-      cityName: formData.cityName,
-      tblo: formData.tblo.trim(),
-      skh: formData.skh,
-      codeSF: formData.codeSF,
-      nameSF: formData.nameSF,
-      kindM: formData.kindM,
-      onvan: formData.onvan,
-      lat: formData.lat,
-      lng: formData.lng,
-      masirCode: formData.masirCode,
-      masirName: formData.masirName
+      name:      data.name.trim(),
+      tel:       data.tel.trim(),
+      mobile:    data.mobile.trim(),
+      addB:      data.addB.trim(),
+      cityCode:  data.cityCode,
+      cityName:  data.cityName,
+      tblo:      data.tblo.trim(),
+      skh:       data.skh,
+      codeSF:    data.codeSF,
+      nameSF:    data.nameSF,
+      kindM:     data.kindM,
+      onvan:     data.onvan,
+      lat:       data.lat,
+      lng:       data.lng,
+      masirCode: data.masirCode,
+      masirName: data.masirName
     };
+
     await createCompleteCustomer(customerData);
+
     Alert.alert('موفقیت', 'مشتری با موفقیت ثبت شد', [
       { text: 'باشه', onPress: () => navigation.goBack() }
     ]);
   };
 
-  // ── هندل تأیید مودال لوکیشن ─────────────────────────────────────────────
+  // ── ۱۰. تأیید مودال لوکیشن ───────────────────────────────────────────────
   const handleLocationConfirm = async (coords) => {
-    setFormData(prev => ({
-      ...prev,
+    const updatedForm = {
+      ...formData,
       lat: coords.latitude.toString(),
       lng: coords.longitude.toString()
-    }));
+    };
+    setFormData(updatedForm);
     setShowManualLocationModal(false);
-    // اگه از مسیر handleSubmit اومدیم، ادامه بده
+
     if (!formData.lat) {
-      // مستقیم ادامه ثبت بده (با coords جدید)
       setLoading(true);
       try {
-        const updatedForm = {
-          ...formData,
-          lat: coords.latitude.toString(),
-          lng: coords.longitude.toString()
-        };
         const duplicateCheck = await checkDuplicateCustomer({
-          name: updatedForm.name.trim(), tel: updatedForm.tel.trim(),
-          mobile: updatedForm.mobile.trim(), addB: updatedForm.addB.trim(),
+          name:     updatedForm.name.trim(),
+          tel:      updatedForm.tel.trim(),
+          mobile:   updatedForm.mobile.trim(),
+          addB:     updatedForm.addB.trim(),
           cityCode: updatedForm.cityCode
         });
-        if (duplicateCheck.isDuplicate) { Alert.alert('خطا', 'مشتری تکراری میباشد'); return; }
-
-        const buyerCode = await generateBuyerCode(updatedForm.cityCode);
-        await createCompleteCustomer({ ...updatedForm, buyerCode, name: updatedForm.name.trim(), tel: updatedForm.tel.trim(), mobile: updatedForm.mobile.trim(), addB: updatedForm.addB.trim(), tblo: updatedForm.tblo.trim() });
-        Alert.alert('موفقیت', 'مشتری با موفقیت ثبت شد', [
-          { text: 'باشه', onPress: () => navigation.goBack() }
-        ]);
+        if (duplicateCheck.isDuplicate) {
+          Alert.alert('خطا', 'مشتری تکراری میباشد');
+          return;
+        }
+        await proceedWithRegistration(updatedForm);
       } catch (error) {
         Alert.alert('خطا', error.message || 'خطای ناشناخته');
       } finally {
@@ -331,14 +451,15 @@ const CustomerRegistration = ({ navigation }) => {
     if (locationStatus !== 'searching' && locationStatus !== 'failed') return null;
     const config = {
       searching: { color: '#F59E0B', bg: '#FFFBEB', text: 'در حال دریافت موقعیت...' },
-      failed: { color: '#EF4444', bg: '#FEF2F2', text: '⚠ موقعیت دریافت نشد' },
+      failed:    { color: '#EF4444', bg: '#FEF2F2', text: '⚠ موقعیت دریافت نشد' },
     }[locationStatus];
     if (!config) return null;
     return (
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: 6,
         backgroundColor: config.bg, borderRadius: 8, paddingHorizontal: 12,
-        paddingVertical: 6, marginBottom: 12, borderWidth: 1, borderColor: config.color + '40'
+        paddingVertical: 6, marginBottom: 12, borderWidth: 1,
+        borderColor: config.color + '40'
       }}>
         {locationStatus === 'searching' && <ActivityIndicator size="small" color={config.color} />}
         <Text style={{ fontSize: 12, color: config.color, fontFamily: 'IRANYekan', flex: 1, textAlign: 'right' }}>
@@ -347,6 +468,100 @@ const CustomerRegistration = ({ navigation }) => {
       </View>
     );
   };
+
+  // ── بخش انتخاب عکس ───────────────────────────────────────────────────────
+  const PhotoSection = () => (
+    <View style={{
+      marginTop: 16, marginBottom: 8,
+      borderWidth: 1.5,
+      borderColor: photoError ? '#EF4444' : selectedPhotos.length > 0 ? '#10B981' : '#D1D5DB',
+      borderRadius: 12, padding: 12,
+      backgroundColor: photoError ? '#FEF2F2' : '#F9FAFB'
+    }}>
+      {/* عنوان */}
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 10 }}>
+        <Text style={{ fontFamily: 'IRANYekan', fontSize: 14, color: '#374151', textAlign: 'right' }}>
+          عکس مغازه *
+        </Text>
+        {selectedPhotos.length > 0 && (
+          <View style={{
+            backgroundColor: '#10B981', borderRadius: 10,
+            paddingHorizontal: 8, paddingVertical: 2, marginLeft: 8
+          }}>
+            <Text style={{ color: '#fff', fontSize: 11, fontFamily: 'IRANYekan' }}>
+              {selectedPhotos.length} عکس
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* پیش‌نمایش عکس‌ها */}
+      {selectedPhotos.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+          {selectedPhotos.map((uri, index) => (
+            <View key={index} style={{ marginLeft: 8, position: 'relative' }}>
+              <Image
+                source={{ uri }}
+                style={{ width: 80, height: 80, borderRadius: 8, backgroundColor: '#E5E7EB' }}
+              />
+              {/* دکمه حذف */}
+              <TouchableOpacity
+                onPress={() => handleRemovePhoto(index)}
+                style={{
+                  position: 'absolute', top: -6, right: -6,
+                  width: 22, height: 22, borderRadius: 11,
+                  backgroundColor: '#EF4444', justifyContent: 'center', alignItems: 'center',
+                  borderWidth: 2, borderColor: '#fff'
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold', lineHeight: 14 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </ScrollView>
+      )}
+
+      {/* دکمه‌های انتخاب */}
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {/* دوربین */}
+        <TouchableOpacity
+          style={{
+            flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+            backgroundColor: '#4F46E5', borderRadius: 8,
+            paddingVertical: 10, gap: 6
+          }}
+          onPress={handleTakePhoto}
+        >
+          <Text style={{ color: '#fff', fontSize: 16 }}>📷</Text>
+          <Text style={{ color: '#fff', fontFamily: 'IRANYekan', fontSize: 12 }}>دوربین</Text>
+        </TouchableOpacity>
+
+        {/* گالری */}
+        <TouchableOpacity
+          style={{
+            flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+            backgroundColor: '#0622a3', borderRadius: 8,
+            paddingVertical: 10, gap: 6
+          }}
+          onPress={handlePickPhotos}
+        >
+          <Text style={{ color: '#fff', fontSize: 16 }}>🖼</Text>
+          <Text style={{ color: '#fff', fontFamily: 'IRANYekan', fontSize: 12 }}>گالری</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* پیام خطا */}
+      {photoError ? (
+        <Text style={{ color: '#EF4444', fontFamily: 'IRANYekan', fontSize: 12, textAlign: 'right', marginTop: 6 }}>
+          {photoError}
+        </Text>
+      ) : (
+        <Text style={{ color: '#6B7280', fontFamily: 'IRANYekan', fontSize: 11, textAlign: 'right', marginTop: 6 }}>
+          حداقل ۱ عکس — حداکثر ۱۰ عکس (هر عکس تا ۱۰MB)
+        </Text>
+      )}
+    </View>
+  );
 
   const CustomPickerModal = ({ visible, onClose, title, data, onSelect, selectedValue }) => (
     <Modal visible={visible} transparent={true} animationType="slide" onRequestClose={onClose}>
@@ -364,10 +579,15 @@ const CustomerRegistration = ({ navigation }) => {
             keyExtractor={(item) => item.value || item.CodeSF || item.codeM || item.CityCode}
             renderItem={({ item }) => (
               <TouchableOpacity
-                style={[styles.modalItem, (selectedValue === (item.value || item.CodeSF || item.codeM || item.CityCode)) && styles.selectedItem]}
+                style={[
+                  styles.modalItem,
+                  (selectedValue === (item.value || item.CodeSF || item.codeM || item.CityCode)) && styles.selectedItem
+                ]}
                 onPress={() => { onSelect(item); onClose(); }}
               >
-                <Text style={styles.modalItemText}>{item.label || item.NameSF || item.NameM || item.CityName}</Text>
+                <Text style={styles.modalItemText}>
+                  {item.label || item.NameSF || item.NameM || item.CityName}
+                </Text>
                 {(selectedValue === (item.value || item.CodeSF || item.codeM || item.CityCode)) && (
                   <Text style={styles.selectedIcon}>✓</Text>
                 )}
@@ -469,7 +689,10 @@ const CustomerRegistration = ({ navigation }) => {
 
       <View style={styles.inputContainer}>
         <Text style={styles.label}>شهر *</Text>
-        <TouchableOpacity style={[styles.pickerButton, errors.city && styles.pickerError]} onPress={() => setShowCityModal(true)}>
+        <TouchableOpacity
+          style={[styles.pickerButton, errors.city && styles.pickerError]}
+          onPress={() => setShowCityModal(true)}
+        >
           <Text style={styles.pickerArrow}>▼</Text>
           <Text style={styles.pickerButtonText}>{formData.cityName || 'انتخاب شهر'}</Text>
         </TouchableOpacity>
@@ -478,7 +701,10 @@ const CustomerRegistration = ({ navigation }) => {
 
       <View style={styles.inputContainer}>
         <Text style={styles.label}>مسیر *</Text>
-        <TouchableOpacity style={[styles.pickerButton, errors.masir && styles.pickerError]} onPress={() => setShowMasirModal(true)}>
+        <TouchableOpacity
+          style={[styles.pickerButton, errors.masir && styles.pickerError]}
+          onPress={() => setShowMasirModal(true)}
+        >
           <Text style={styles.pickerArrow}>▼</Text>
           <Text style={styles.pickerButtonText}>{formData.masirName || 'انتخاب مسیر'}</Text>
         </TouchableOpacity>
@@ -511,22 +737,27 @@ const CustomerRegistration = ({ navigation }) => {
 
       <View style={styles.inputContainer}>
         <Text style={styles.label}>صنف *</Text>
-        <TouchableOpacity style={[styles.pickerButton, errors.sanf && styles.pickerError]} onPress={() => setShowSanfModal(true)}>
+        <TouchableOpacity
+          style={[styles.pickerButton, errors.sanf && styles.pickerError]}
+          onPress={() => setShowSanfModal(true)}
+        >
           <Text style={styles.pickerArrow}>▼</Text>
           <Text style={styles.pickerButtonText}>{formData.nameSF || 'انتخاب صنف'}</Text>
         </TouchableOpacity>
         {errors.sanf ? <Text style={styles.errorText}>{errors.sanf}</Text> : null}
       </View>
 
-      {/* ── دکمه‌های ثبت ── */}
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+      {/* ── بخش عکس مغازه ── */}
+      <PhotoSection />
 
-        {/* دکمه ثبت لوکیشن — هم‌شکل submitButton */}
+      {/* ── دکمه‌های ثبت ── */}
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+
+        {/* دکمه ثبت لوکیشن */}
         <TouchableOpacity
-          style={[styles.submitButton, { flex: 2, marginTop: 0 }, loading && styles.submitButtonDisabled]}
+          style={[styles.submitButton, { flex: 1, marginTop: 0 }, loading && styles.submitButtonDisabled]}
           onPress={() => setShowManualLocationModal(true)}
         >
-
           <Text style={styles.submitButtonText}>
             {formData.lat ? 'ویرایش لوکیشن' : 'ثبت لوکیشن'}
           </Text>
@@ -534,39 +765,74 @@ const CustomerRegistration = ({ navigation }) => {
 
         {/* دکمه ثبت مشتری */}
         <TouchableOpacity
-          style={[styles.submitButton, { flex: 2, marginTop: 0 }, loading && styles.submitButtonDisabled]}
+          style={[styles.submitButton, { flex: 1, marginTop: 0 }, loading && styles.submitButtonDisabled]}
           onPress={handleSubmit}
-          disabled={loading}
+          disabled={loading || uploadingPhotos}
         >
-          {loading
-            ? <ActivityIndicator color="#fff" />
+          {loading || uploadingPhotos
+            ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <ActivityIndicator color="#fff" size="small" />
+                <Text style={styles.submitButtonText}>
+                  {uploadingPhotos ? 'آپلود عکس...' : 'در حال ثبت...'}
+                </Text>
+              </View>
+            )
             : <Text style={styles.submitButtonText}>ثبت مشتری</Text>
           }
         </TouchableOpacity>
 
       </View>
 
-      <CustomPickerModal visible={showCityModal} onClose={() => setShowCityModal(false)} title="انتخاب شهر" data={cities} selectedValue={formData.cityCode}
-        onSelect={(item) => { setFormData(prev => ({ ...prev, cityCode: item.CityCode, cityName: item.CityName })); setErrors(prev => ({ ...prev, city: validators.city(item.CityCode) })); }} />
-      <CustomPickerModal visible={showMasirModal} onClose={() => setShowMasirModal(false)} title="انتخاب مسیر" data={masirList} selectedValue={formData.masirCode}
-        onSelect={(item) => { setFormData(prev => ({ ...prev, masirCode: item.codeM, masirName: item.NameM })); setErrors(prev => ({ ...prev, masir: validators.masir(item.codeM) })); }} />
-      <CustomPickerModal visible={showSanfModal} onClose={() => setShowSanfModal(false)} title="انتخاب صنف" data={sanfList} selectedValue={formData.codeSF}
-        onSelect={(item) => { setFormData(prev => ({ ...prev, codeSF: item.CodeSF, nameSF: item.NameSF })); setErrors(prev => ({ ...prev, sanf: validators.sanf(item.CodeSF) })); }} />
-      <CustomPickerModal visible={showCustomerTypeModal} onClose={() => setShowCustomerTypeModal(false)} title="نوع مشتری" data={customerTypes} selectedValue={formData.skh}
-        onSelect={(item) => setFormData(prev => ({ ...prev, skh: item.value }))} />
-      <CustomPickerModal visible={showTitleModal} onClose={() => setShowTitleModal(false)} title="عنوان" data={titles} selectedValue={formData.onvan}
-        onSelect={(item) => setFormData(prev => ({ ...prev, onvan: item.value }))} />
-      <CustomPickerModal visible={showOwnershipModal} onClose={() => setShowOwnershipModal(false)} title="نوع مالکیت" data={ownershipTypes} selectedValue={formData.kindM}
-        onSelect={(item) => setFormData(prev => ({ ...prev, kindM: item.value }))} />
+      <CustomPickerModal
+        visible={showCityModal} onClose={() => setShowCityModal(false)}
+        title="انتخاب شهر" data={cities} selectedValue={formData.cityCode}
+        onSelect={(item) => {
+          setFormData(prev => ({ ...prev, cityCode: item.CityCode, cityName: item.CityName }));
+          setErrors(prev => ({ ...prev, city: validators.city(item.CityCode) }));
+        }}
+      />
+      <CustomPickerModal
+        visible={showMasirModal} onClose={() => setShowMasirModal(false)}
+        title="انتخاب مسیر" data={masirList} selectedValue={formData.masirCode}
+        onSelect={(item) => {
+          setFormData(prev => ({ ...prev, masirCode: item.codeM, masirName: item.NameM }));
+          setErrors(prev => ({ ...prev, masir: validators.masir(item.codeM) }));
+        }}
+      />
+      <CustomPickerModal
+        visible={showSanfModal} onClose={() => setShowSanfModal(false)}
+        title="انتخاب صنف" data={sanfList} selectedValue={formData.codeSF}
+        onSelect={(item) => {
+          setFormData(prev => ({ ...prev, codeSF: item.CodeSF, nameSF: item.NameSF }));
+          setErrors(prev => ({ ...prev, sanf: validators.sanf(item.CodeSF) }));
+        }}
+      />
+      <CustomPickerModal
+        visible={showCustomerTypeModal} onClose={() => setShowCustomerTypeModal(false)}
+        title="نوع مشتری" data={customerTypes} selectedValue={formData.skh}
+        onSelect={(item) => setFormData(prev => ({ ...prev, skh: item.value }))}
+      />
+      <CustomPickerModal
+        visible={showTitleModal} onClose={() => setShowTitleModal(false)}
+        title="عنوان" data={titles} selectedValue={formData.onvan}
+        onSelect={(item) => setFormData(prev => ({ ...prev, onvan: item.value }))}
+      />
+      <CustomPickerModal
+        visible={showOwnershipModal} onClose={() => setShowOwnershipModal(false)}
+        title="نوع مالکیت" data={ownershipTypes} selectedValue={formData.kindM}
+        onSelect={(item) => setFormData(prev => ({ ...prev, kindM: item.value }))}
+      />
 
       <ManualLocationModal
         visible={showManualLocationModal}
         buyerName={formData.name || 'مشتری جدید'}
-        initialLat={37.55012}
-        initialLng={45.06872}
+        initialLat={modalInitialLat}
+        initialLng={modalInitialLng}
         onConfirm={handleLocationConfirm}
         onCancel={() => setShowManualLocationModal(false)}
       />
+
     </ScrollView>
   );
 };

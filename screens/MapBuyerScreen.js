@@ -549,18 +549,32 @@ export default function MapBuyerScreen({ route }) {
     return { md: 50, pe: true };
   };
 
-  const fetchUserLocation = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return null;
+ const fetchUserLocation = async () => {
+  try {
+    // ─── اول چک کن کاربر seller هست یا نه ───
+    const userStr = await AsyncStorage.getItem('user');
+    const userData = userStr ? JSON.parse(userStr) : null;
+    const isSeller = userData?.role === 'seller' || userData?.UserType === 'seller';
 
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, timeout: 10000 });
-      const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
-      return { location: coords, fullCoords: loc.coords };
-    } catch (e) {
+    if (!isSeller) {
+      console.log('📌 MapBuyer: کاربر seller نیست — GPS اجباری نیست');
       return null;
     }
-  };
+
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') return null;
+
+    const loc = await Location.getCurrentPositionAsync({ 
+      accuracy: Location.Accuracy.Balanced, 
+      timeout: 10000 
+    });
+    const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+    return { location: coords, fullCoords: loc.coords };
+  } catch (e) {
+    console.log('⚠️ MapBuyer fetchUserLocation error:', e.message);
+    return null;
+  }
+};
 
   const getCachedBuyers = async () => {
     try {

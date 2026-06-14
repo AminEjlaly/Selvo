@@ -18,6 +18,7 @@ import HomeMenuGrid from "../components/HomeMenuGrid";
 import PersianCalendar from '../components/PersianCalendar';
 import { sendQuickLocation } from '../services/locationService'; // اضافه کردن import
 
+
 const { width } = Dimensions.get("window");
 
 const HomeScreen = ({ navigation, route }) => {
@@ -70,42 +71,43 @@ const HomeScreen = ({ navigation, route }) => {
   }, []);
 
   // 🔥 تابع برای ارسال سریع لوکیشن
-  const sendLocationOnMenuClick = async (menuName) => {
-     if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) {
-    console.log('📍 Location tracking disabled');
-    return;
-  }
-    try {
-      console.log(`📍 کلیک روی منو: ${menuName}`);
-      
-      if (!visitorInfo) {
-        console.log('⚠️ visitorInfo موجود نیست');
-        return;
-      }
-      
-      // فقط برای فروشنده و تحویل‌دار لوکیشن بفرست
-      if (userType !== 'seller' && userType !== 'delivery') {
-        console.log(`📌 کاربر از نوع ${userType} - نیازی به ثبت لوکیشن نیست`);
-        return;
-      }
-      
-      console.log(`📍 ارسال لوکیشن برای منو: ${menuName}`);
-      
-      // ارسال در پس‌زمینه بدون منتظر ماندن
-      sendQuickLocation(visitorInfo).then(success => {
-        if (success) {
-          console.log(`✅ لوکیشن برای منو "${menuName}" ثبت شد`);
-        } else {
-          console.log(`⚠️ ثبت لوکیشن برای منو "${menuName}" ناموفق بود`);
-        }
-      }).catch(error => {
-        console.log(`❌ خطا در ثبت لوکیشن: ${error.message}`);
-      });
-      
-    } catch (error) {
-      console.log(`❌ خطا در ارسال لوکیشن برای منو ${menuName}:`, error.message);
+ const sendLocationOnMenuClick = async (menuName) => {
+  try {
+    // فقط برای seller لوکیشن بفرست
+    if (userType !== 'seller') {
+      console.log(`📌 کاربر از نوع ${userType} - نیازی به ثبت لوکیشن نیست`);
+      return;
     }
-  };
+
+    if (!visitorInfo) {
+      console.log('⚠️ visitorInfo موجود نیست');
+      return;
+    }
+
+    // 🔍 چک مجوز مدیر
+    const { checkTrackingEnabled } = require('../services/locationService');
+    const trackingAllowed = await checkTrackingEnabled();
+    if (!trackingAllowed) {
+      console.log('🚫 Location tracking disabled by manager');
+      return;
+    }
+
+    console.log(`📍 ارسال لوکیشن برای منو: ${menuName}`);
+
+    sendQuickLocation(visitorInfo).then(success => {
+      if (success) {
+        console.log(`✅ لوکیشن برای منو "${menuName}" ثبت شد`);
+      } else {
+        console.log(`⚠️ ثبت لوکیشن برای منو "${menuName}" ناموفق بود`);
+      }
+    }).catch(err => {
+      console.log(`❌ خطا در ثبت لوکیشن: ${err.message}`);
+    });
+
+  } catch (error) {
+    console.log(`❌ خطا در ارسال لوکیشن برای منو ${menuName}:`, error.message);
+  }
+};
 
   // تابع کمکی برای تشخیص نقش کاربر
   const getUserRole = () => {

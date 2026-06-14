@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { CartProvider } from "./CartContext";
 import { getCurrentRoute, navigationRef } from "./navigationService";
+import { checkTrackingEnabled, startAutoSendLocation, stopAutoSendLocation } from './services/locationService';
 
 // صفحات
 import BuyerListScreen from "./screens/BuyerListScreen";
@@ -33,6 +34,8 @@ import InvoiceItemsScreen from "./screens/InvoiceItemsScreen";
 import InvoicesScreen from "./screens/InvoicesScreen";
 import LearnChatBot from "./screens/LearnChatBot";
 import LoginScreen from "./screens/LoginScreen";
+import ManagerRozMasirScreen from "./screens/ManagerRozMasirScreen";
+import ManagerVisitorOrdersScreen from './screens/ManagerVisitorOrdersScreen';
 import MapBuyerScreen from "./screens/MapBuyerScreen";
 import MapDeliveriScreen from "./screens/MapDeliveriScreen";
 import OrderReportScreen from "./screens/OrderReportScreen";
@@ -46,10 +49,6 @@ import SideMenu from "./components/MenuItems";
 import styles from "./styles/App.styles";
 
 // ─── import سرویس لوکیشن ───
-import {
-  startAutoSendLocation,
-  stopAutoSendLocation,
-} from "./services/locationService";
 
 const Stack = createStackNavigator();
 const APP_CONFIG = { LOCATION_TRACKING_ENABLED: true };
@@ -299,8 +298,22 @@ export default function App() {
         const { status } = await Location.getForegroundPermissionsAsync();
         console.log("📍 Initial permission status:", status);
 
+        // ─── اول نوع کاربر رو بررسی کن ───
+        const userData = await AsyncStorage.getItem("user");
+        const parsedUser = userData ? JSON.parse(userData) : null;
+        const isSeller = !parsedUser ||
+          parsedUser.role === 'seller' ||
+          parsedUser.UserType === 'seller';
+
+        // اگه customer یا delivery هست → GPS اجباری نیست
+        if (!isSeller) {
+          setLocationGranted(true);
+          setLocationChecking(false);
+          return;
+        }
+
+        // ─── seller → GPS اجباری است ───
         if (status === "granted") {
-          // مجوز داریم → GPS رو تست کن
           try {
             await Location.getCurrentPositionAsync({
               accuracy: Location.Accuracy.Lowest,
@@ -312,7 +325,6 @@ export default function App() {
             setLocationGranted(false);
           }
         } else if (status === "undetermined") {
-          // هنوز نپرسیدیم → درخواست بده
           const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
           console.log("📍 Permission requested, result:", newStatus);
 
@@ -330,7 +342,6 @@ export default function App() {
             setLocationGranted(false);
           }
         } else {
-          // denied → Gate نشون بده تا بره تنظیمات
           setLocationGranted(false);
         }
 
@@ -384,19 +395,27 @@ export default function App() {
     const subscription = AppState.addEventListener("change", async (nextState) => {
       if (nextState === "active") {
         try {
+          // ─── فقط برای seller چک کن ───
+          const userData = await AsyncStorage.getItem("user");
+          const parsedUser = userData ? JSON.parse(userData) : null;
+          const isSeller = !parsedUser ||
+            parsedUser.role === 'seller' ||
+            parsedUser.UserType === 'seller';
+
+          if (!isSeller) return; // customer/delivery → رد بشه
+
           const { status } = await Location.getForegroundPermissionsAsync();
           if (status !== "granted") {
             setLocationGranted(false);
             return;
           }
-          // ─── تست واقعی به جای providerStatus ───
           try {
             await Location.getCurrentPositionAsync({
               accuracy: Location.Accuracy.Lowest,
               timeout: 8000,
             });
           } catch {
-            setLocationGranted(false); // GPS خاموشه → قفل کن
+            setLocationGranted(false);
           }
         } catch (e) {
           console.warn("⚠️ GPS re-check:", e.message);
@@ -409,14 +428,21 @@ export default function App() {
   // ─────────────────────────────────────────────
   // 🔥 شروع ارسال لوکیشن هر ۶۰ ثانیه
   // ─────────────────────────────────────────────
+
   const startLocationTracking = async (parsedUser) => {
     if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) return;
 
     try {
-      // توقف interval قبلی اگه وجود داشت
       if (locationIntervalRef.current) {
         clearInterval(locationIntervalRef.current);
         locationIntervalRef.current = null;
+      }
+
+      // 🔍 چک مجوز مدیر قبل از شروع
+      const trackingAllowed = await checkTrackingEnabled();
+      if (!trackingAllowed) {
+        console.log('🚫 Location tracking disabled by manager');
+        return;
       }
 
       const visitorInfo = {
@@ -425,26 +451,17 @@ export default function App() {
           parsedUser.UserID?.toString() ||
           parsedUser.id?.toString() ||
           parsedUser.NOF?.toString() ||
-          "unknown",
+          'unknown',
         VisitorName:
-          parsedUser.NameF ||
-          parsedUser.name ||
-          parsedUser.FullName ||
-          "Unknown User",
+          parsedUser.NameF || parsedUser.name || parsedUser.FullName || 'Unknown User',
       };
 
-      console.log("📍 Starting location tracking for:", visitorInfo);
-      await AsyncStorage.setItem("visitor_info", JSON.stringify(visitorInfo));
+      await AsyncStorage.setItem('visitor_info', JSON.stringify(visitorInfo));
+      await startAutoSendLocation(visitorInfo, { intervalMs: 60000, minInterval: 10000 });
 
-      // شروع سرویس (که خودش هم interval داره)
-      await startAutoSendLocation(visitorInfo, {
-        intervalMs: 60000,   // هر ۶۰ ثانیه
-        minInterval: 10000,  // حداقل ۱۰ ثانیه فاصله
-      });
-
-      console.log("✅ Location tracking started successfully");
+      console.log('✅ Location tracking started');
     } catch (e) {
-      console.warn("⚠️ Location tracking error:", e.message);
+      console.warn('⚠️ Location tracking error:', e.message);
     }
   };
 
@@ -612,7 +629,9 @@ export default function App() {
                   <Stack.Screen name="DeliveryOrdersScreen" component={DeliveryOrdersScreen} options={{ title: "خروجی کالا" }} initialParams={{ userType, buyerCode }} />
                   <Stack.Screen name="MapDeliveri" component={MapDeliveriScreen} options={{ title: "نقشه تحویل" }} initialParams={{ userType, buyerCode }} />
                   <Stack.Screen name="InvoiceItems" component={InvoiceItemsScreen} options={{ title: "اقلام فاکتور" }} />
+                  <Stack.Screen name="ManagerRozMasir" component={ManagerRozMasirScreen} options={{ title: "مدیریت روزمسیر" }} initialParams={{ userType, buyerCode }} />
                   <Stack.Screen name="LearnChatBot" component={LearnChatBot} options={{ title: "آموزش اپلیکیشن" }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="ManagerVisitorOrders" component={ManagerVisitorOrdersScreen} options={{ title: 'گزارش سفارشات ویزیتورها' }} />
                 </>
               ) : (
                 <Stack.Screen name="LoginScreen" options={{ headerShown: false }}>

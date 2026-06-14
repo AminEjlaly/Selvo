@@ -3025,3 +3025,53 @@ export const getVisitorLocations = async (visitorCode, date) => {
   }
 };
 //_________________________________________________________________________________visitor location for buss end
+export const uploadCustomerPhotos = async (buyerCode, photoUris, deviceInfo = '') => {
+  try {
+    const token = await AsyncStorage.getItem('token');
+    const baseUrl = await getServerUrl();
+    
+    const formData = new FormData();
+    formData.append('buyerCode', buyerCode);
+    
+    // ارسال اطلاعات دستگاه
+    if (deviceInfo) {
+      formData.append('deviceInfo', deviceInfo);
+    }
+
+    // اضافه کردن عکس‌ها
+    photoUris.forEach((uri, i) => {
+      const ext = uri.split('.').pop().toLowerCase() || 'jpg';
+      formData.append('photos', {
+        uri,
+        type: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+        name: `photo_${i}.${ext}`
+      });
+    });
+
+    const response = await fetch(`${baseUrl}/api/customers/photos`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error('پاسخ سرور نامعتبر است');
+    }
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || 'خطا در آپلود عکس‌ها');
+    }
+
+    return data;
+  } catch (err) {
+    if (err.message === 'Network request failed') {
+      throw new Error('ارتباط با سرور برقرار نشد');
+    }
+    throw err;
+  }
+};

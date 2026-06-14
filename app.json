@@ -2,7 +2,7 @@
   "expo": {
     "name": "SELVO",
     "slug": "ava-app",
-    "version": "1.5.1",
+    "version": "1.8.0",
     "orientation": "portrait",
     "icon": "./assets/back3.png",
     "userInterfaceStyle": "light",

@@ -351,3 +351,35 @@ export const getCachedPosition = async () => {
   cacheTime = now;
   return position;
 };
+export const checkTrackingEnabled = async () => {
+  try {
+    const token = await AsyncStorage.getItem('token');
+    if (!token) return true;
+
+    // ── آدرس سرور رو مثل بقیه جاها بساز ──
+    const connectionType = await AsyncStorage.getItem('connection_type');
+    let serverUrl = '';
+
+    if (connectionType === 'url') {
+      serverUrl = await AsyncStorage.getItem('server_url') || '';
+    } else {
+      const ip   = await AsyncStorage.getItem('server_ip')   || '';
+      const port = await AsyncStorage.getItem('server_port') || '';
+      serverUrl = ip && port ? `http://${ip}:${port}` : '';
+    }
+
+    if (!serverUrl) return true; // سرور تنظیم نشده → فعال بمون
+
+    const response = await fetch(`${serverUrl}/api/location-tracking/status`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+
+    if (!response.ok) return true;
+
+    const data = await response.json();
+    return data?.data?.locationTrackingEnabled !== false;
+
+  } catch {
+    return true; // fail-safe
+  }
+};
