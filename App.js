@@ -20,15 +20,18 @@ import {
 import { CartProvider } from "./CartContext";
 import { getCurrentRoute, navigationRef } from "./navigationService";
 import { checkTrackingEnabled, startAutoSendLocation, stopAutoSendLocation } from './services/locationService';
-
+import { initSocket } from "./socket";
 // صفحات
+import SideMenu from "./components/MenuItems";
 import BuyerListScreen from "./screens/BuyerListScreen";
 import CartScreen from "./screens/CartScreen";
 import ChatScreen from "./screens/ChatScreen";
+import CustomerPaymentScreen from "./screens/CustomerPaymentScreen";
 import CustomerRegistration from "./screens/CustomerRegistration";
 import CustomerRequestsScreen from "./screens/CustomerRequestsScreen";
 import DeliveryOrdersScreen from "./screens/DeliveryOrdersScreen";
 import EditInvoiceScreen from "./screens/EditInvoiceScreen";
+import FactorPishDetailScreen from "./screens/FactorPishDetailScreen";
 import HomeScreen from "./screens/HomeScreen";
 import InvoiceItemsScreen from "./screens/InvoiceItemsScreen";
 import InvoicesScreen from "./screens/InvoicesScreen";
@@ -39,13 +42,16 @@ import ManagerVisitorOrdersScreen from './screens/ManagerVisitorOrdersScreen';
 import MapBuyerScreen from "./screens/MapBuyerScreen";
 import MapDeliveriScreen from "./screens/MapDeliveriScreen";
 import OrderReportScreen from "./screens/OrderReportScreen";
+import PendingFactorPishScreen from "./screens/PendingFactorPishScreen";
 import ProductGroupsScreen from "./screens/ProductGroupsScreen";
 import ProductListScreen from "./screens/ProductListScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import ReportScreen from "./screens/ReportScreen";
 import SellerPerformanceScreen from "./screens/SellerPerformanceScreen";
-
-import SideMenu from "./components/MenuItems";
+import {
+  emitUserOffline,
+  emitUserOnline
+} from './socket';
 import styles from "./styles/App.styles";
 
 // ─── import سرویس لوکیشن ───
@@ -273,7 +279,7 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [locationChecking, setLocationChecking] = useState(true);
-  const [locationGranted, setLocationGranted] = useState(false);
+  const [locationGranted, setLocationGranted] = useState(true);
   const [currentRouteName, setCurrentRouteName] = useState("");
   const [user, setUser] = useState(null);
   const [userType, setUserType] = useState("seller");
@@ -293,67 +299,6 @@ export default function App() {
     if (!fontsLoaded) return;
     SplashScreen.hideAsync();
 
-    const initPermissions = async () => {
-      try {
-        const { status } = await Location.getForegroundPermissionsAsync();
-        console.log("📍 Initial permission status:", status);
-
-        // ─── اول نوع کاربر رو بررسی کن ───
-        const userData = await AsyncStorage.getItem("user");
-        const parsedUser = userData ? JSON.parse(userData) : null;
-        const isSeller = !parsedUser ||
-          parsedUser.role === 'seller' ||
-          parsedUser.UserType === 'seller';
-
-        // اگه customer یا delivery هست → GPS اجباری نیست
-        if (!isSeller) {
-          setLocationGranted(true);
-          setLocationChecking(false);
-          return;
-        }
-
-        // ─── seller → GPS اجباری است ───
-        if (status === "granted") {
-          try {
-            await Location.getCurrentPositionAsync({
-              accuracy: Location.Accuracy.Lowest,
-              timeout: 10000,
-            });
-            setLocationGranted(true);
-          } catch (posError) {
-            console.warn("⚠️ GPS not available:", posError.message);
-            setLocationGranted(false);
-          }
-        } else if (status === "undetermined") {
-          const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
-          console.log("📍 Permission requested, result:", newStatus);
-
-          if (newStatus === "granted") {
-            try {
-              await Location.getCurrentPositionAsync({
-                accuracy: Location.Accuracy.Lowest,
-                timeout: 10000,
-              });
-              setLocationGranted(true);
-            } catch {
-              setLocationGranted(false);
-            }
-          } else {
-            setLocationGranted(false);
-          }
-        } else {
-          setLocationGranted(false);
-        }
-
-      } catch (e) {
-        console.warn("⚠️ Permission init error:", e.message);
-        setLocationGranted(false);
-      } finally {
-        setLocationChecking(false);
-      }
-    };
-
-    initPermissions();
   }, [fontsLoaded]);
 
   // ─── بررسی وضعیت لاگین ───
@@ -369,6 +314,25 @@ export default function App() {
           setUser(parsedUser);
           setUserType(resolvedUserType);
           setBuyerCode(resolvedBuyerCode);
+
+          if (resolvedUserType === "seller") {
+            const { status } = await Location.getForegroundPermissionsAsync();
+            if (status === "granted") {
+              try {
+                await Location.getCurrentPositionAsync({
+                  accuracy: Location.Accuracy.Lowest,
+                  timeout: 10000,
+                });
+                setLocationGranted(true);
+              } catch {
+                setLocationGranted(false);
+              }
+            } else {
+              setLocationGranted(false);
+            }
+          } else {
+            setLocationGranted(true);
+          }
         }
       } catch (err) {
         console.warn("⚠️ Auth check:", err.message);
@@ -378,6 +342,45 @@ export default function App() {
     };
     checkAuthStatus();
   }, []);
+
+
+useEffect(() => {
+  if (!isLoggedIn || !user) return;
+
+  let mounted = true;
+
+  const connectAndGoOnline = async () => {
+    try {
+      await initSocket();
+      if (mounted) {
+        emitUserOnline({
+          userId: user?.NOF,
+          userName: user?.NameF,
+          role: user?.role || user?.UserType 
+        });
+      }
+    } catch (e) {
+      console.warn("⚠️ خطا در اتصال سوکت:", e.message);
+    }
+  };
+
+  // ✅ بلافاصله بعد از این‌که isLoggedIn و user ست شدن (لاگین تازه، یا اپ با توکن قبلی باز شده) وصل شو
+  connectAndGoOnline();
+
+  const subscription = AppState.addEventListener("change", async (nextState) => {
+    if (nextState === "active") {
+      await connectAndGoOnline();
+    }
+    if (nextState === "background" || nextState === "inactive") {
+      emitUserOffline();
+    }
+  });
+
+  return () => {
+    mounted = false;
+    subscription.remove();
+  };
+}, [isLoggedIn, user]);
 
   // ─── انیمیشن منو ───
   useEffect(() => {
@@ -503,18 +506,34 @@ export default function App() {
       setUserType(resolvedUserType);
       setBuyerCode(resolvedBuyerCode);
       setMenuOpen(false);
+    
+
+      if (resolvedUserType === "seller") {
+        // حالا که لاگین موفق بوده، چک کن GPS واقعاً روشنه یا نه
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status === "granted") {
+          try {
+            await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Lowest,
+              timeout: 10000,
+            });
+            setLocationGranted(true);
+          } catch {
+            setLocationGranted(false); // گیت نشون داده میشه
+          }
+        } else {
+          setLocationGranted(false); // گیت نشون داده میشه، کاربر مجوز میده
+        }
+        setTimeout(() => startLocationTracking(parsedUser), 500);
+      } else {
+        setLocationGranted(true); // customer/delivery نیازی به گیت ندارن
+      }
 
       console.log("✅ Login success:", {
         name: parsedUser.name || parsedUser.NameF,
         type: resolvedUserType,
         userId: parsedUser.userId || parsedUser.id,
       });
-
-      // 🔥 فقط برای seller لوکیشن شروع کن
-      if (resolvedUserType === "seller") {
-        // setTimeout تا login کامل بشه اول
-        setTimeout(() => startLocationTracking(parsedUser), 500);
-      }
     } catch (err) {
       console.warn("⚠️ Login warning:", err.message);
       setIsLoggedIn(false);
@@ -540,7 +559,7 @@ export default function App() {
   // ─────────────────────────────────────────────
   // Loading
   // ─────────────────────────────────────────────
-  if (loading || !fontsLoaded || locationChecking) {
+  if (loading || !fontsLoaded) {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar barStyle="light-content" backgroundColor="#0c0116ff" />
@@ -559,12 +578,10 @@ export default function App() {
   // ─────────────────────────────────────────────
   // 🔐 Gate
   // ─────────────────────────────────────────────
-  if (!locationGranted) {
+  if (isLoggedIn && userType === "seller" && !locationGranted) {
     return (
       <AppErrorBoundary>
-        <LocationPermissionGate
-          onPermissionsGranted={() => setLocationGranted(true)}
-        />
+        <LocationPermissionGate onPermissionsGranted={() => setLocationGranted(true)} />
       </AppErrorBoundary>
     );
   }
@@ -628,10 +645,13 @@ export default function App() {
                   <Stack.Screen name="CustomerRequests" component={CustomerRequestsScreen} options={{ title: "درخواست‌های من" }} initialParams={{ userType, buyerCode }} />
                   <Stack.Screen name="DeliveryOrdersScreen" component={DeliveryOrdersScreen} options={{ title: "خروجی کالا" }} initialParams={{ userType, buyerCode }} />
                   <Stack.Screen name="MapDeliveri" component={MapDeliveriScreen} options={{ title: "نقشه تحویل" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="InvoiceItems" component={InvoiceItemsScreen} options={{ title: "اقلام فاکتور" }} />
+                  <Stack.Screen name="InvoiceItems" component={InvoiceItemsScreen} options={{ headerShown: false }} />
                   <Stack.Screen name="ManagerRozMasir" component={ManagerRozMasirScreen} options={{ title: "مدیریت روزمسیر" }} initialParams={{ userType, buyerCode }} />
                   <Stack.Screen name="LearnChatBot" component={LearnChatBot} options={{ title: "آموزش اپلیکیشن" }} initialParams={{ userType, buyerCode }} />
                   <Stack.Screen name="ManagerVisitorOrders" component={ManagerVisitorOrdersScreen} options={{ title: 'گزارش سفارشات ویزیتورها' }} />
+                  <Stack.Screen name="PendingFactorPish" component={PendingFactorPishScreen} options={{ headerShown: false }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="FactorPishDetail" component={FactorPishDetailScreen} options={{ headerShown: false }} initialParams={{ userType, buyerCode }} />
+                  <Stack.Screen name="CustomerPayment" component={CustomerPaymentScreen} options={{ headerShown: false }} initialParams={{ userType, buyerCode }} />
                 </>
               ) : (
                 <Stack.Screen name="LoginScreen" options={{ headerShown: false }}>

@@ -565,7 +565,36 @@ const openPaymentModal = async () => {
 const handleSaveInvoiceFinal = async () => {
   if (isSubmitting) return;
   setIsSubmitting(true);
+  // بررسی چک
+if (paymentMethod === 'چک' && (!checkDays || Number(checkDays) <= 0)) {
+  Alert.alert(
+    'خطا',
+    'برای پرداخت چکی، وارد کردن تعداد روز چک الزامی است.'
+  );
+  setIsSubmitting(false);
+  return;
+}
 
+
+// بررسی قیمت کالاها
+const noPriceItems = cart.filter(item => 
+  !item.totalPrice || Number(item.totalPrice) <= 0
+);
+
+if (noPriceItems.length > 0) {
+
+  const itemsName = noPriceItems
+    .map(item => item.Name)
+    .join('\n');
+
+  Alert.alert(
+    'خطای قیمت کالا',
+    `کالاهای زیر فعلاً قیمت ندارند:\n\n${itemsName}\n\nلطفاً حذف یا اصلاح کنید.`
+  );
+
+  setIsSubmitting(false);
+  return;
+}
   try {
     let locationInfo = null;
     let sellerCode = 1;

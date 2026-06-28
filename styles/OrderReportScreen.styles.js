@@ -526,4 +526,68 @@ paymentDescription: {
   flex: 1,
   marginRight: 10,
 },
+// اضافه کردن به فایل استایل
+
+citySelector: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  backgroundColor: '#f1f5f9',
+  paddingHorizontal: 16,
+  paddingVertical: 12,
+  borderRadius: 12,
+  marginBottom: 8,
+  borderWidth: 1,
+  borderColor: '#e2e8f0',
+},
+citySelectorText: {
+  fontSize: 14,
+  fontFamily: 'IRANYekan',
+  color: '#1e293b',
+},
+selectedCityInfo: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  backgroundColor: '#e8f5e9',
+  paddingHorizontal: 16,
+  paddingVertical: 10,
+  marginHorizontal: 16,
+  marginTop: 8,
+  borderRadius: 8,
+  borderWidth: 1,
+  borderColor: '#c8e6c9',
+},
+selectedCityText: {
+  fontSize: 13,
+  fontFamily: 'IRANYekan',
+  color: '#2e7d32',
+  fontWeight: 'bold',
+},
+changeCityButton: {
+  paddingHorizontal: 12,
+  paddingVertical: 4,
+  backgroundColor: '#0622a3',
+  borderRadius: 6,
+},
+changeCityText: {
+  fontSize: 12,
+  fontFamily: 'IRANYekan',
+  color: 'white',
+},
+selectedCityItem: {
+  backgroundColor: '#e8f0fe',
+  borderWidth: 1,
+  borderColor: '#0622a3',
+},
+disabledButton: {
+  opacity: 0.5,
+},
+hintText: {
+  fontSize: 12,
+  fontFamily: 'IRANYekan',
+  color: '#ef4444',
+  textAlign: 'center',
+  marginTop: 4,
+},
 });

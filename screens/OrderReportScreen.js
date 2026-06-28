@@ -14,7 +14,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { getCustomerBalance, getCustomerOrders, getCustomerReturns, getDailyBuyers, getOrderDetails } from '../api';
+import {
+  getBuyersByCityCode,
+  getCities,
+  getCustomerBalance,
+  getCustomerOrders,
+  getCustomerReturns,
+  getOrderDetails
+} from '../api';
 import styles from '../styles/OrderReportScreen.styles';
 
 const OrderReportScreen = ({ navigation }) => {
@@ -32,11 +39,24 @@ const OrderReportScreen = ({ navigation }) => {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [userRole, setUserRole] = useState(null);
   
+  // ============================================
+  // State های مربوط به انتخاب مشتری
+  // ============================================
   const [customerModalVisible, setCustomerModalVisible] = useState(false);
   const [customers, setCustomers] = useState([]);
   const [filteredCustomers, setFilteredCustomers] = useState([]);
   const [searchText, setSearchText] = useState('');
   const [loadingCustomers, setLoadingCustomers] = useState(false);
+
+  // ============================================
+  // State های جدید برای انتخاب شهر
+  // ============================================
+  const [cityModalVisible, setCityModalVisible] = useState(false);
+  const [cities, setCities] = useState([]);
+  const [filteredCities, setFilteredCities] = useState([]);
+  const [selectedCity, setSelectedCity] = useState(null);
+  const [citySearchText, setCitySearchText] = useState('');
+  const [loadingCities, setLoadingCities] = useState(false);
 
   useEffect(() => {
     loadUserData();
@@ -59,11 +79,18 @@ const OrderReportScreen = ({ navigation }) => {
           setSelectedCustomer(customerSelf);
           loadOrdersData(customerSelf.code);
         } else {
+          // بازیابی مشتری انتخاب شده قبلی
           const savedCustomer = await AsyncStorage.getItem('selectedCustomer');
           if (savedCustomer) {
             const customer = JSON.parse(savedCustomer);
             setSelectedCustomer(customer);
             loadOrdersData(customer.code);
+          }
+          
+          // بازیابی شهر انتخاب شده قبلی
+          const savedCity = await AsyncStorage.getItem('selectedCity');
+          if (savedCity) {
+            setSelectedCity(JSON.parse(savedCity));
           }
         }
       }
@@ -104,14 +131,113 @@ const OrderReportScreen = ({ navigation }) => {
     }
   };
 
+  // ============================================
+  // توابع مربوط به انتخاب شهر
+  // ============================================
+  const openCityModal = async () => {
+    setCityModalVisible(true);
+    setLoadingCities(true);
+    setCitySearchText('');
+    try {
+      const data = await getCities();
+      
+      // 🔥 تبدیل کلیدهای داده به فرمت استاندارد
+      const formattedCities = (data || []).map(city => ({
+        code: city.CityCode || city.code,
+        name: city.CityName || city.name,
+        description: city.Sharh || city.description || '',
+        province: city.ostan || city.province || ''
+      }));
+      
+      setCities(formattedCities);
+      setFilteredCities(formattedCities);
+    } catch (error) {
+      Alert.alert('خطا', 'دریافت لیست شهرها با مشکل مواجه شد');
+    } finally {
+      setLoadingCities(false);
+    }
+  };
+
+  const handleSearchCities = (text) => {
+    setCitySearchText(text);
+    if (text) {
+      const filtered = cities.filter(city =>
+        city.name?.includes(text) ||
+        city.code?.toString().includes(text) ||
+        city.province?.includes(text)
+      );
+      setFilteredCities(filtered);
+    } else {
+      setFilteredCities(cities);
+    }
+  };
+
+  const selectCity = async (city) => {
+    setSelectedCity(city);
+    await AsyncStorage.setItem('selectedCity', JSON.stringify(city));
+    setCityModalVisible(false);
+    setCitySearchText('');
+    
+    // پس از انتخاب شهر، مشتری‌های آن شهر را دریافت می‌کنیم
+    await loadCustomersByCity(city.code);
+  };
+
+  // ============================================
+  // توابع مربوط به انتخاب مشتری
+  // ============================================
+  const loadCustomersByCity = async (cityCode) => {
+    setLoadingCustomers(true);
+    setCustomerModalVisible(true);
+    try {
+      const data = await getBuyersByCityCode(cityCode);
+      
+      // 🔥 تبدیل کلیدهای داده به فرمت استاندارد
+      const formattedCustomers = (data || []).map(customer => ({
+        code: customer.BuyerCode || customer.code || customer.Code,
+        name: customer.name || customer.Name || customer.NameF || '',
+        cityCode: customer.CityCode || customer.cityCode,
+        cityName: customer.CityName || customer.cityName,
+        tel: customer.Tel || customer.tel || '',
+        mobile: customer.mobile || customer.Mobile || '',
+        address: customer.AddB || customer.address || ''
+      }));
+      
+      const uniqueData = Array.from(new Map(formattedCustomers.map(b => [b.code, b])).values());
+      setCustomers(uniqueData);
+      setFilteredCustomers(uniqueData);
+    } catch (error) {
+      Alert.alert('خطا', 'دریافت لیست مشتری‌ها با مشکل مواجه شد');
+    } finally {
+      setLoadingCustomers(false);
+    }
+  };
+
   const openCustomerModal = async () => {
+    if (!selectedCity) {
+      openCityModal();
+      return;
+    }
+    
     setCustomerModalVisible(true);
     setLoadingCustomers(true);
     try {
-      const data = await getDailyBuyers();
-      const uniqueData = Array.from(new Map(data.map(b => [b.code, b])).values());
+      const data = await getBuyersByCityCode(selectedCity.code);
+      
+      // 🔥 تبدیل کلیدهای داده به فرمت استاندارد
+      const formattedCustomers = (data || []).map(customer => ({
+        code: customer.BuyerCode || customer.code || customer.Code,
+        name: customer.name || customer.Name || customer.NameF || '',
+        cityCode: customer.CityCode || customer.cityCode,
+        cityName: customer.CityName || customer.cityName,
+        tel: customer.Tel || customer.tel || '',
+        mobile: customer.mobile || customer.Mobile || '',
+        address: customer.AddB || customer.address || ''
+      }));
+      
+      const uniqueData = Array.from(new Map(formattedCustomers.map(b => [b.code, b])).values());
       setCustomers(uniqueData);
       setFilteredCustomers(uniqueData);
+      setSearchText('');
     } catch (error) {
       Alert.alert('خطا', 'دریافت لیست مشتری‌ها با مشکل مواجه شد');
     } finally {
@@ -153,6 +279,9 @@ const OrderReportScreen = ({ navigation }) => {
     }
   };
 
+  // ============================================
+  // توابع فرمت‌دهی
+  // ============================================
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     try {
@@ -171,6 +300,9 @@ const OrderReportScreen = ({ navigation }) => {
     return new Intl.NumberFormat('fa-IR').format(price);
   };
 
+  // ============================================
+  // توابع رندرینگ
+  // ============================================
   const renderOrderItem = (item, index, isReturn = false) => (
     <TouchableOpacity
       key={`${isReturn ? 'return' : 'order'}-${item.Number}-${index}`}
@@ -307,6 +439,9 @@ const OrderReportScreen = ({ navigation }) => {
     );
   };
 
+  // ============================================
+  // مودال جزییات سفارش
+  // ============================================
   const renderDetailsModal = () => (
     <Modal
       visible={modalVisible}
@@ -381,6 +516,82 @@ const OrderReportScreen = ({ navigation }) => {
     </Modal>
   );
 
+  // ============================================
+  // مودال انتخاب شهر
+  // ============================================
+  const renderCityModal = () => (
+    <Modal
+      visible={cityModalVisible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setCityModalVisible(false)}
+    >
+      <View style={styles.customerModalContainer}>
+        <View style={styles.customerModalContent}>
+          <View style={styles.customerModalHeader}>
+            <Text style={styles.customerModalTitle}>انتخاب شهر</Text>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setCityModalVisible(false)}
+            >
+              <MaterialIcons name="close" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.searchContainer}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="جستجو بر اساس نام یا کد شهر..."
+              value={citySearchText}
+              onChangeText={handleSearchCities}
+              placeholderTextColor="#94a3b8"
+            />
+          </View>
+
+          {loadingCities ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#0622a3" />
+              <Text style={styles.loadingText}>در حال دریافت لیست شهرها...</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={filteredCities}
+              keyExtractor={(item) => item.code?.toString() || Math.random().toString()}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.customerItem,
+                    selectedCity?.code === item.code && styles.selectedCityItem
+                  ]}
+                  onPress={() => selectCity(item)}
+                >
+                  <View style={styles.customerInfo}>
+                    <Text style={styles.customerName}>{item.name || 'نامشخص'}</Text>
+                    <Text style={styles.customerCode}>
+                      کد: {item.code || 'نامشخص'} 
+                      {item.province ? ` | استان: ${item.province}` : ''}
+                    </Text>
+                  </View>
+                  {selectedCity?.code === item.code && (
+                    <MaterialIcons name="check-circle" size={24} color="#0622a3" />
+                  )}
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text style={styles.noCustomersText}>
+                  {citySearchText ? 'شهری با این مشخصات یافت نشد' : 'شهری موجود نیست'}
+                </Text>
+              }
+            />
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+
+  // ============================================
+  // مودال انتخاب مشتری
+  // ============================================
   const renderCustomerModal = () => (
     <Modal
       visible={customerModalVisible}
@@ -391,7 +602,9 @@ const OrderReportScreen = ({ navigation }) => {
       <View style={styles.customerModalContainer}>
         <View style={styles.customerModalContent}>
           <View style={styles.customerModalHeader}>
-            <Text style={styles.customerModalTitle}>انتخاب مشتری</Text>
+            <Text style={styles.customerModalTitle}>
+              {selectedCity ? `مشتری‌های ${selectedCity.name}` : 'انتخاب مشتری'}
+            </Text>
             <TouchableOpacity
               style={styles.closeButton}
               onPress={() => setCustomerModalVisible(false)}
@@ -399,6 +612,24 @@ const OrderReportScreen = ({ navigation }) => {
               <MaterialIcons name="close" size={24} color="white" />
             </TouchableOpacity>
           </View>
+
+          {/* نمایش شهر انتخاب شده */}
+          {selectedCity && (
+            <View style={styles.selectedCityInfo}>
+              <Text style={styles.selectedCityText}>
+                شهر: {selectedCity.name}
+              </Text>
+              <TouchableOpacity
+                style={styles.changeCityButton}
+                onPress={() => {
+                  setCustomerModalVisible(false);
+                  openCityModal();
+                }}
+              >
+                <Text style={styles.changeCityText}>تغییر شهر</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <View style={styles.searchContainer}>
             <TextInput
@@ -435,7 +666,7 @@ const OrderReportScreen = ({ navigation }) => {
               )}
               ListEmptyComponent={
                 <Text style={styles.noCustomersText}>
-                  {searchText ? 'مشتری با این مشخصات یافت نشد' : 'مشتری‌ای موجود نیست'}
+                  {searchText ? 'مشتری با این مشخصات یافت نشد' : 'مشتری‌ای در این شهر موجود نیست'}
                 </Text>
               }
             />
@@ -445,18 +676,42 @@ const OrderReportScreen = ({ navigation }) => {
     </Modal>
   );
 
+  // ============================================
+  // بخش انتخاب مشتری
+  // ============================================
   const renderCustomerSelection = () => (
     <View style={styles.customerSelection}>
       <Text style={styles.selectionTitle}>برای مشاهده سفارشات، لطفاً یک مشتری انتخاب کنید:</Text>
+      
+      {/* نمایش شهر انتخاب شده */}
       <TouchableOpacity
-        style={styles.selectCustomerButton}
+        style={styles.citySelector}
+        onPress={openCityModal}
+      >
+        <Text style={styles.citySelectorText}>
+          {selectedCity ? `🏙️ ${selectedCity.name}` : '🏙️ انتخاب شهر'}
+        </Text>
+        <MaterialIcons name="arrow-drop-down" size={24} color="#0622a3" />
+      </TouchableOpacity>
+
+      {/* دکمه انتخاب مشتری */}
+      <TouchableOpacity
+        style={[
+          styles.selectCustomerButton,
+          !selectedCity && styles.disabledButton
+        ]}
         onPress={openCustomerModal}
+        disabled={!selectedCity}
       >
         <Text style={styles.selectCustomerText}>
           {selectedCustomer ? selectedCustomer.name : 'انتخاب مشتری'}
         </Text>
         <MaterialIcons name="arrow-drop-down" size={24} color="#0622a3" />
       </TouchableOpacity>
+
+      {!selectedCity && (
+        <Text style={styles.hintText}>لطفاً ابتدا یک شهر انتخاب کنید</Text>
+      )}
     </View>
   );
 
@@ -529,6 +784,7 @@ const OrderReportScreen = ({ navigation }) => {
       </ScrollView>
 
       {renderDetailsModal()}
+      {renderCityModal()}
       {renderCustomerModal()}
     </SafeAreaView>
   );

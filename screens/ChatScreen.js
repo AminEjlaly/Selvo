@@ -87,10 +87,10 @@ const ChatScreen = ({ route }) => {
 
   // ✨ بررسی نوع فایل
   const isImageFile = (file) => {
-    if (!file) return false;
-    
-    const name = (file.fileName || file.name || "").toLowerCase();
-    const type = (file.fileType || file.type || file.mimeType || "").toLowerCase();
+  if (!file) return false;
+  
+  const name = String(file.fileName || file.name || "").toLowerCase();
+  const type = String(file.fileType || file.type || file.mimeType || "").toLowerCase();
 
     const imageExtensions = /\.(jpg|jpeg|png|webp|gif|bmp|heic|heif|tiff|tif|svg|ico)$/;
     const imageMimeTypes = /^image\/(jpeg|png|webp|gif|bmp|heic|heif|tiff|svg\+xml|x-icon)$/;
@@ -204,18 +204,27 @@ const ChatScreen = ({ route }) => {
     });
 
     socketInstance.on('receiveMessage', (serverMessage) => {
-      console.log('📨 پیام جدید دریافت شد:', serverMessage);
-
       setMessages(prev => {
+        // اول با clientTempId دقیق تطبیق بده
+        if (serverMessage.clientTempId) {
+          const tempMessage = prev.find(msg => msg.id === serverMessage.clientTempId);
+          if (tempMessage) {
+            return prev.map(msg =>
+              msg.id === serverMessage.clientTempId
+                ? { ...serverMessage, local: false, isSending: false }
+                : msg
+            );
+          }
+        }
+
+        // fallback قدیمی (برای سازگاری با پیام‌هایی که clientTempId ندارن)
         if (serverMessage.senderId === user?.NOF) {
           const tempMessage = prev.find(msg =>
             msg.local &&
             msg.senderId === serverMessage.senderId &&
             msg.text === serverMessage.text
           );
-
           if (tempMessage) {
-            console.log('🔄 جایگزینی پیام موقت با پیام سرور');
             return prev.map(msg =>
               msg.id === tempMessage.id
                 ? { ...serverMessage, local: false, isSending: false }
@@ -225,28 +234,19 @@ const ChatScreen = ({ route }) => {
         }
 
         if (prev.find(m => m.id === serverMessage.id)) {
-          console.log('⚠️ پیام تکراری، نادیده گرفته شد');
           return prev;
         }
 
-        const messageToAdd = {
-          ...serverMessage,
-          local: false
-        };
-
+        const messageToAdd = { ...serverMessage, local: false };
         if (messageToAdd.file && !messageToAdd.file.baseUrl) {
           messageToAdd.file.baseUrl = baseUrl;
         }
-
-        console.log('✅ پیام جدید اضافه شد');
         return [...prev, messageToAdd];
       });
 
-      // فقط اگر کاربر در پایین هست، اسکرول کن
       if (isAtBottom) {
         setTimeout(() => scrollToBottom(), 100);
       } else {
-        // اگر کاربر در پایین نیست، دکمه اسکرول رو نشون بده
         setShowScrollToBottom(true);
         setUnreadMessageCount(prev => prev + 1);
       }
@@ -287,7 +287,7 @@ const ChatScreen = ({ route }) => {
         if (result.success && result.data) {
           const messagesArray = result.data.messages || result.data;
           if (Array.isArray(messagesArray) && messagesArray.length > 0) {
-            
+
             const messagesWithFileInfo = await Promise.all(
               messagesArray.map(async (msg) => {
                 if (msg.file && msg.file.fileId) {
@@ -301,7 +301,7 @@ const ChatScreen = ({ route }) => {
                         }
                       }
                     );
-                    
+
                     if (fileInfoResponse.ok) {
                       const fileInfoResult = await fileInfoResponse.json();
                       if (fileInfoResult.success) {
@@ -319,7 +319,7 @@ const ChatScreen = ({ route }) => {
                     console.error('❌ خطا در دریافت اطلاعات فایل:', error);
                   }
                 }
-                
+
                 return {
                   ...msg,
                   file: msg.file ? {
@@ -349,7 +349,7 @@ const ChatScreen = ({ route }) => {
             }, []);
 
             setMessages(uniqueMessages);
-            
+
             // موقع لود اولیه به پایین اسکرول کن
             setTimeout(() => {
               scrollToBottom(false);
@@ -372,15 +372,15 @@ const ChatScreen = ({ route }) => {
   // ✨ هندل اسکرول
   const handleScroll = (event) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    
+
     // محاسبه فاصله از پایین
     const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
-    
+
     // اگر کمتر از 50 پیکسل از پایین فاصله داریم، کاربر در پایین است
     const userIsAtBottom = distanceFromBottom < 50;
-    
+
     setIsAtBottom(userIsAtBottom);
-    
+
     // اگر کاربر از پایین فاصله گرفت، دکمه اسکرول رو نشون بده
     if (distanceFromBottom > 100) {
       setShowScrollToBottom(true);
@@ -447,7 +447,7 @@ const ChatScreen = ({ route }) => {
         events.forEach(event => {
           try {
             currentSocket.off(event);
-          } catch (error) {}
+          } catch (error) { }
         });
       }
     } catch (error) {
@@ -470,19 +470,22 @@ const ChatScreen = ({ route }) => {
   }, [groupId]);
 
   // ✨ ارسال پیام
+  // ✨ ارسال پیام
   const sendMessage = async () => {
     if ((!newMessage.trim() && !uploadingFile) || !user) return;
 
     const messageText = newMessage.trim();
+    const tempMessageId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
     const messageData = {
       groupId: groupId,
       senderId: user.NOF,
       senderName: user.NameF,
       text: messageText,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      clientTempId: tempMessageId
     };
 
-    const tempMessageId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const tempMessage = {
       ...messageData,
       id: tempMessageId,
@@ -493,26 +496,12 @@ const ChatScreen = ({ route }) => {
 
     setMessages(prev => [...prev, tempMessage]);
     setNewMessage('');
-    
-    // همیشه بعد از ارسال پیام به پایین اسکرول کن
+
     scrollToBottom();
 
     try {
       const result = await sendMessageWithSocket(messageData);
-      if (result.success) {
-        setMessages(prev => {
-          const filtered = prev.filter(msg => msg.id !== tempMessageId);
-          const serverMessage = result.data || result.message;
-          if (serverMessage && !filtered.find(m => m.id === serverMessage.id)) {
-            return [...filtered, {
-              ...serverMessage,
-              isSending: false,
-              local: false
-            }];
-          }
-          return filtered;
-        });
-      } else {
+      if (!result.success) {
         throw new Error(result.error || 'خطا در ارسال پیام');
       }
     } catch (error) {
@@ -526,6 +515,7 @@ const ChatScreen = ({ route }) => {
   };
 
   // ✨ هندل انتخاب فایل
+  // ✨ هندل انتخاب فایل
   const handleFileSelection = async (file) => {
     if (!user) {
       console.log('❌ کاربر لاگین نیست');
@@ -534,10 +524,10 @@ const ChatScreen = ({ route }) => {
 
     const shortenFileName = (fileName, maxLength = 100) => {
       if (!fileName || fileName.length <= maxLength) return fileName;
-      
+
       const ext = file.type?.split('/')[1] || 'file';
       const nameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
-      
+
       const shortenedName = nameWithoutExt.substring(0, maxLength - 10);
       return `${shortenedName}_${Date.now()}.${ext}`;
     };
@@ -581,7 +571,8 @@ const ChatScreen = ({ route }) => {
         senderId: user.NOF,
         senderName: user.NameF,
         text: '',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        clientTempId: tempMessageId
       };
 
       const onProgress = (progress) => {
@@ -589,66 +580,55 @@ const ChatScreen = ({ route }) => {
         setUploadProgress(progress);
         setMessages(prev => prev.map(msg =>
           msg.id === tempMessageId
-            ? { 
-                ...msg, 
-                file: { 
-                  ...msg.file, 
-                  progress: progress 
-                } 
+            ? {
+                ...msg,
+                file: {
+                  ...msg.file,
+                  progress: progress
+                }
               }
             : msg
         ));
       };
 
       console.log('🚀 فراخوانی uploadAndSendFile...');
-      
+
       const fileToUpload = {
         ...file,
         name: safeFileName
       };
-      
+
       const result = await uploadAndSendFile(fileToUpload, messageData, onProgress);
 
       console.log('✅ نتیجه آپلود:', result);
 
-      if (result.success) {
-        setMessages(prev => prev.map(msg =>
-          msg.id === tempMessageId
-            ? {
-                ...msg,
-                isSending: false,
-                file: {
-                  ...msg.file,
-                  uploading: false,
-                  fileId: result.uploadData?.fileId,
-                  fileName: result.uploadData?.fileName,
-                  fileType: result.uploadData?.fileType,
-                  fileSize: result.uploadData?.fileSize,
-                  fileUrl: `/api/media/file/${result.uploadData?.fileId}`,
-                  baseUrl: baseUrl
-                }
-              }
-            : msg
-        ));
-        console.log('🎉 فایل با موفقیت آپلود و ارسال شد');
-      } else {
+      if (!result.success) {
         throw new Error('آپلود ناموفق بود');
       }
 
-    } catch (error) {
-      console.error('❌ خطا در آپلود فایل:', error);
-      
+      // فقط پیشرفت آپلود رو تموم‌شده نشون بده (uploading bar محو بشه)
+      // محتوای نهایی پیام (fileId و غیره) از طریق 'receiveMessage' میاد
       setMessages(prev => prev.map(msg =>
         msg.id === tempMessageId
-          ? { 
-              ...msg, 
-              isSending: false, 
+          ? { ...msg, file: { ...msg.file, uploading: false, progress: 100 } }
+          : msg
+      ));
+      console.log('🎉 فایل با موفقیت آپلود شد - منتظر تایید سرور...');
+
+    } catch (error) {
+      console.error('❌ خطا در آپلود فایل:', error);
+
+      setMessages(prev => prev.map(msg =>
+        msg.id === tempMessageId
+          ? {
+              ...msg,
+              isSending: false,
               sendError: true,
-              errorMessage: error.message 
+              errorMessage: error.message
             }
           : msg
       ));
-      
+
       Alert.alert('خطا', `آپلود فایل ناموفق بود: ${error.message}`);
     } finally {
       setUploadingFile(false);
@@ -656,6 +636,8 @@ const ChatScreen = ({ route }) => {
       console.log('🏁 پایان فرآیند آپلود');
     }
   };
+
+ 
 
   // ✨ هندل انتخاب عکس از گالری
   const handleImagePick = async () => {
@@ -666,16 +648,16 @@ const ChatScreen = ({ route }) => {
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
+        allowsEditing: false,
         aspect: [4, 3],
         quality: 0.8,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const image = result.assets[0];
-        
+
         const safeName = `image_${Date.now()}.jpg`;
-        
+
         handleFileSelection({
           uri: image.uri,
           type: 'image/jpeg',
@@ -707,7 +689,7 @@ const ChatScreen = ({ route }) => {
         }
 
         const originalName = file.name || 'document';
-        const safeName = originalName.length > 50 
+        const safeName = originalName.length > 50
           ? `file_${Date.now()}.${originalName.split('.').pop()}`
           : originalName;
 
@@ -733,16 +715,16 @@ const ChatScreen = ({ route }) => {
       if (status !== 'granted') return;
 
       const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
+        allowsEditing: false,
         aspect: [4, 3],
         quality: 0.8,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const image = result.assets[0];
-        
+
         const safeName = `photo_${Date.now()}.jpg`;
-        
+
         handleFileSelection({
           uri: image.uri,
           type: 'image/jpeg',
@@ -762,19 +744,19 @@ const ChatScreen = ({ route }) => {
     if (file.fileUrl && file.fileUrl.startsWith('/')) {
       return `${currentBaseUrl}${file.fileUrl}`;
     }
-    
+
     if (file.fileUrl && file.fileUrl.startsWith('http')) {
       return file.fileUrl;
     }
-    
+
     if (file.uri) {
       return file.uri;
     }
-    
+
     if (file.fileId && currentBaseUrl) {
       return `${currentBaseUrl}/api/media/file/${file.fileId}`;
     }
-    
+
     return null;
   };
 
@@ -789,11 +771,14 @@ const ChatScreen = ({ route }) => {
 
   // ✨ رندر محتوای پیام
   const renderMessageContent = (item) => {
-    if (item.file) {
-      const completeFile = {
-        ...item.file,
-        baseUrl: baseUrl
-      };
+    if (item.file && typeof item.file === 'object') {
+    const completeFile = {
+      ...item.file,
+      fileName: item.file.fileName || item.file.name || item.file.FileName || '',
+      fileType: item.file.fileType || item.file.type || item.file.FileType || '',
+      fileSize: item.file.fileSize || item.file.FileSize || 0,
+      baseUrl: baseUrl
+    };
 
       return (
         <MessageFile
@@ -805,7 +790,7 @@ const ChatScreen = ({ route }) => {
 
             if (isImg) {
               const imageUrl = buildFileUrl(completeFile, baseUrl);
-              
+
               if (imageUrl) {
                 setSelectedImage({
                   ...completeFile,
@@ -816,7 +801,7 @@ const ChatScreen = ({ route }) => {
               }
             } else {
               const fileUrl = buildFileUrl(completeFile, baseUrl);
-              
+
               if (fileUrl) {
                 Linking.openURL(fileUrl).catch(error => {
                   console.error('❌ خطا در باز کردن فایل:', error);
@@ -1117,10 +1102,7 @@ const ChatScreen = ({ route }) => {
               <Text style={styles.filePickerOptionText}>انتخاب عکس</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.filePickerOption} onPress={handleDocumentPick}>
-              <Feather name="file-text" size={24} color="#f59e0b" />
-              <Text style={styles.filePickerOptionText}>انتخاب فایل</Text>
-            </TouchableOpacity>
+           
           </View>
         </TouchableOpacity>
       </Modal>

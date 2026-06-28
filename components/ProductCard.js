@@ -4,6 +4,29 @@ import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-na
 import { getServerUrl } from '../config';
 import styles from '../styles/ProductListScreen.styles';
 
+// ==================== کامپوننت badge جایزه ====================
+
+function GiftBadge({ giftInfo }) {
+  if (!giftInfo) return null;
+
+  const isPercent = giftInfo.type === 'percent';
+  const label = isPercent ? 'تخفیف:' : 'جایزه:';
+  const value = isPercent
+    ? `بیش از ${Number(giftInfo.minQty).toLocaleString('fa-IR')} عدد ${giftInfo.value}٪`
+    : `بیش از ${Number(giftInfo.minQty).toLocaleString('fa-IR')} عدد ${giftInfo.value} جایزه`;
+
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={[styles.detailValue, { color: '#b45309', fontWeight: '700' }]}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+// ==================== کامپوننت اصلی ====================
+
 export default function ProductCard({ item, onPress, onImagePress, isDemo }) {
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
@@ -24,25 +47,22 @@ export default function ProductCard({ item, onPress, onImagePress, isDemo }) {
     fetchServerUrl();
   }, []);
 
-// داخل useEffect بعد از getServerUrl:
-const getCachedImage = async (url) => {
-  try {
-    const cached = await AsyncStorage.getItem(`img_cache_${url}`);
-    if (cached) return cached;
-    // ذخیره URL (نه base64) برای FastImage یا Image معمولی
-    await AsyncStorage.setItem(`img_cache_${url}`, url);
-    return url;
-  } catch {
-    return url;
-  }
-};
+  const getCachedImage = async (url) => {
+    try {
+      const cached = await AsyncStorage.getItem(`img_cache_${url}`);
+      if (cached) return cached;
+      await AsyncStorage.setItem(`img_cache_${url}`, url);
+      return url;
+    } catch {
+      return url;
+    }
+  };
+
   const getCorrectImageUrl = () => {
     if (!item.imageUrl || !serverBaseUrl) return null;
-    
     try {
       const fileName = item.imageUrl.split('/').pop();
-      const correctUrl = `${serverBaseUrl}/Gallery/${fileName}`;      
-      return correctUrl;
+      return `${serverBaseUrl}/Gallery/${fileName}`;
     } catch (error) {
       console.error('❌ Error creating correct URL:', error);
       return item.imageUrl;
@@ -69,7 +89,6 @@ const getCachedImage = async (url) => {
     console.error(`❌ [Image Load Error] - Product: ${item.Code}`);
   };
 
-  // 🔥 تابع جدید: کلیک روی عکس
   const handleImageClick = () => {
     if (correctImageUrl && !imageError && !imageLoading && onImagePress) {
       onImagePress(correctImageUrl);
@@ -93,9 +112,10 @@ const getCachedImage = async (url) => {
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress}>
-      {/* 🔥 بخش تصویر محصول - با TouchableOpacity جداگانه */}
-      <TouchableOpacity 
-        style={styles.cardImage} 
+
+      {/* بخش تصویر محصول */}
+      <TouchableOpacity
+        style={styles.cardImage}
         onPress={handleImageClick}
         activeOpacity={0.8}
         disabled={imageError || imageLoading || !correctImageUrl}
@@ -106,15 +126,13 @@ const getCachedImage = async (url) => {
               <View style={customStyles.imageLoaderOverlay}>
                 <ActivityIndicator size="large" color="#1e3a8a" />
                 <Text style={customStyles.imageLoadingText}>در حال بارگذاری تصویر...</Text>
-                <Text style={customStyles.serverInfoText}>
-                  از: {serverBaseUrl}
-                </Text>
+                <Text style={customStyles.serverInfoText}>از: {serverBaseUrl}</Text>
               </View>
             )}
-            
-            <Image 
+
+            <Image
               source={{ uri: correctImageUrl }}
-              style={[styles.cardImage, imageLoading && { opacity: 0 }]} 
+              style={[styles.cardImage, imageLoading && { opacity: 0 }]}
               resizeMode="contain"
               onLoadStart={handleImageLoadStart}
               onLoadEnd={handleImageLoadEnd}
@@ -133,10 +151,8 @@ const getCachedImage = async (url) => {
             {imageError ? (
               <>
                 <Text style={customStyles.errorText}>تصویری تعریف نشده</Text>
-                <Text style={customStyles.serverInfoText}>
-                  سرور: {serverBaseUrl}
-                </Text>
-                <TouchableOpacity 
+                <Text style={customStyles.serverInfoText}>سرور: {serverBaseUrl}</Text>
+                <TouchableOpacity
                   style={customStyles.retryButton}
                   onPress={() => {
                     setImageError(false);
@@ -147,13 +163,11 @@ const getCachedImage = async (url) => {
                 </TouchableOpacity>
               </>
             ) : (
-              <Text style={customStyles.errorText}> 
-              تصویری تعریف نشده
-              </Text>
+              <Text style={customStyles.errorText}>تصویری تعریف نشده</Text>
             )}
           </View>
         )}
-        
+
         {/* کد محصول روی عکس */}
         <View style={styles.codeOverlay}>
           <Text style={styles.codeOverlayText}>کد: {item.Code}</Text>
@@ -165,13 +179,10 @@ const getCachedImage = async (url) => {
         <Text style={styles.name} numberOfLines={2}>{item.Name}</Text>
 
         <View style={styles.detailsContainer}>
-          {item.MoenName && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>تولید کننده:</Text>
-              <Text style={styles.detailValue}>---</Text>
-            </View>
-          )}
-          
+
+          {/* 🎁 جایزه / تخفیف - جایگزین ردیف تولیدکننده */}
+          <GiftBadge giftInfo={item.giftInfo} />
+
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>مبنا / جز:</Text>
             <Text style={styles.detailValue}>
@@ -190,14 +201,28 @@ const getCachedImage = async (url) => {
               </Text>
             </View>
           )}
+
+          <View style={[styles.detailRow, styles.consumerPriceRow, { justifyContent: 'flex-end' }]}>
+            <Text style={styles.detailLabel}>قیمت مصرف‌کننده:</Text>
+            <Text style={[
+              styles.detailValue,
+              { textAlign: 'left', marginLeft: 12, fontSize: 11, fontWeight: '600' }
+            ]}>
+              {item?.ConsumerPrice && parseFloat(item.ConsumerPrice) > 0
+                ? parseInt(item.ConsumerPrice).toLocaleString('fa-IR')
+                : '۰'}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.priceContainer}>
           <Text style={styles.priceLabel}>قیمت</Text>
-          <Text style={styles.price}
-  numberOfLines={1}
-  adjustsFontSizeToFit={true}
-  minimumFontScale={0.5}>
+          <Text
+            style={styles.price}
+            numberOfLines={1}
+            adjustsFontSizeToFit={true}
+            minimumFontScale={0.5}
+          >
             {item.Price ? parseInt(item.Price).toLocaleString() : '۰'}
           </Text>
         </View>
@@ -212,13 +237,12 @@ const getCachedImage = async (url) => {
   );
 }
 
+// ==================== استایل‌های سفارشی ====================
+
 const customStyles = {
   imageLoaderOverlay: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#f9fafb',
@@ -232,17 +256,13 @@ const customStyles = {
   },
   topRightLoader: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 8, right: 8,
     backgroundColor: 'rgba(30, 58, 138, 0.95)',
     borderRadius: 16,
     padding: 8,
     zIndex: 3,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
@@ -294,15 +314,12 @@ const customStyles = {
     fontSize: 11,
     fontWeight: '700',
   },
-  // 🔥 استایل جدید: نشانگر قابلیت کلیک
   imageClickHint: {
     position: 'absolute',
-    top: 8,
-    left: 8,
+    top: 8, left: 8,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     borderRadius: 20,
-    width: 32,
-    height: 32,
+    width: 32, height: 32,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 3,

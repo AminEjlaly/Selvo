@@ -28,7 +28,7 @@ export default StyleSheet.create({
     elevation: 3,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 12,
     fontWeight: 'bold',
     color: '#1e293b',
     textAlign: 'center',
@@ -519,5 +519,108 @@ exitBuyer: {
   marginTop: 2,
 },
 
+// در فایل DeliveryOrdersScreen.styles.js اضافه کنید:
+headerTitleContainer: {
+  flex: 1,
+  flexDirection: 'column',
+},
+headerTotalAmount: {
+  fontSize: 18,
+  fontWeight: 'bold',
+  color: '#032966',
+  marginTop: 4,
+},
+  // ────── Detail Modal - نسخه فشرده‌تر ──────
+  detailModalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    width: width * 0.92,
+    maxHeight: height * 0.85,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  detailModalHeader: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#0f172a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#7a828c',
+  },
 
+  detailContent: {
+    padding: 16,           // کاهش از 20 به 16
+  },
+
+  detailSection: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    padding: 16,           // کاهش از 18 به 16
+    marginBottom: 16,      // کاهش از 20 به 16 (مهم!)
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  detailSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 12,      // کاهش فاصله بعد از عنوان
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    writingDirection: 'rtl',
+    textAlign: 'right',
+  },
+
+  detailRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingVertical: 9,    // کاهش از 11 به 9
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  detailRowLast: {
+    borderBottomWidth: 0,
+    paddingBottom: 0,
+  },
+
+  // اطلاعات مالی - فشرده‌تر
+  detailAmountContainer: {
+    alignItems: 'center',
+    backgroundColor: '#f0fdf4',
+    borderRadius: 14,
+    paddingVertical: 18,   // کاهش از 22
+    marginTop: 4,          // خیلی کمتر
+    borderWidth: 1,
+    borderColor: '#86efac',
+  },
+  detailAmount: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#10b981',
+    writingDirection: 'rtl',
+  },
+  detailAmountLabel: {
+    fontSize: 13,
+    color: '#4ade80',
+    marginTop: 2,
+    fontWeight: '600',
+  },
+
+  // وضعیت بدون فاکتور
+  noInvoiceDetailContainer: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    backgroundColor: '#fffbeb',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#fcd34d',
+  },
 });

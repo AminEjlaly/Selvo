@@ -21,6 +21,7 @@ let isInitialized = false;
 let heartbeatInterval = null;
 let connectionAttempts = 0;
 let currentUserId = null;
+let currentUserRole = null; 
 let socketPromiseResolver = null;
 
 import { getServerUrl as getConfigServerUrl } from './config';
@@ -40,7 +41,7 @@ const cleanupSocket = () => {
     clearInterval(heartbeatInterval);
     heartbeatInterval = null;
   }
-  
+
   if (socket) {
     try {
       socket.removeAllListeners();
@@ -53,7 +54,7 @@ const cleanupSocket = () => {
     }
     socket = null;
   }
-  
+
   isConnecting = false;
   isInitialized = false;
   connectionAttempts = 0;
@@ -63,7 +64,7 @@ const setupHeartbeat = (socketInstance) => {
   if (heartbeatInterval) {
     clearInterval(heartbeatInterval);
   }
-  
+
   heartbeatInterval = setInterval(() => {
     if (socketInstance && socketInstance.connected) {
       socketInstance.emit('ping', { timestamp: Date.now() });
@@ -75,33 +76,32 @@ const checkUserChanged = async () => {
   try {
     const userData = await AsyncStorage.getItem('user');
     if (!userData) {
-      return { changed: true, newUserId: null };
+      return { changed: currentUserId !== null, newUserId: null, newUserRole: null };
     }
-    
+
     const user = JSON.parse(userData);
     const newUserId = user.NOF || user.userId || user.id;
-    
-    if (currentUserId && newUserId && currentUserId !== newUserId) {
-      return { changed: true, newUserId };
-    }
-    
-    return { changed: false, newUserId };
+    // 👇 role استخراج کن
+    const newUserRole = user.role || user.UserType || null;
+
+    const changed = currentUserId === null || (newUserId && currentUserId !== newUserId);
+
+    return { changed, newUserId, newUserRole };  // 👈 newUserRole هم برگردون
   } catch (error) {
-    console.error('❌ خطا در بررسی کاربر:', error);
-    return { changed: false, newUserId: null };
+    return { changed: false, newUserId: null, newUserRole: null };
   }
 };
-
 const initializeSocket = async (forceNew = false) => {
   try {
-    const { changed: userChanged, newUserId } = await checkUserChanged();
-    
+    const { changed: userChanged, newUserId,newUserRole } = await checkUserChanged();
+
     if (userChanged || forceNew) {
       cleanupSocket();
       currentUserId = newUserId;
+      currentUserRole = newUserRole;
       socketPromiseResolver = null;
     }
-    
+
     if (isConnecting) {
       if (socketPromiseResolver) {
         return socketPromiseResolver;
@@ -135,6 +135,7 @@ const initializeSocket = async (forceNew = false) => {
         clientType: 'mobile',
         platform: Platform.OS,
         userId: currentUserId,
+        role: currentUserRole,
         timestamp: Date.now()
       }
     });
@@ -143,11 +144,16 @@ const initializeSocket = async (forceNew = false) => {
       isInitialized = true;
       connectionAttempts = 0;
       setupHeartbeat(socket);
+
+      // ✅ هر بار وصل/reconnect شد، آنلاین بودن رو اعلام کن
+      if (currentUserId) {
+          socket.emit('userOnline', { userId: currentUserId, role: currentUserRole, timestamp: Date.now() });
+      }
     });
 
     socket.on('disconnect', (reason) => {
       isInitialized = false;
-      
+
       if (reason === 'io server disconnect') {
         setTimeout(() => {
           if (socket && !socket.connected) {
@@ -206,20 +212,20 @@ const initializeSocket = async (forceNew = false) => {
 
 export const getSocketPromise = async () => {
   const { changed: userChanged } = await checkUserChanged();
-  
+
   if (userChanged) {
     socketPromiseResolver = null;
     return await initializeSocket(true);
   }
-  
+
   if (socket?.connected && isInitialized) {
     return socket;
   }
-  
+
   if (isConnecting && socketPromiseResolver) {
     return socketPromiseResolver;
   }
-  
+
   socketPromiseResolver = initializeSocket();
   return socketPromiseResolver;
 };
@@ -229,51 +235,42 @@ export const getSocket = () => {
     getSocketPromise().catch(console.error);
     return null;
   }
-  
+
   if (!socket.connected && !isConnecting) {
     socket.connect();
   }
-  
+
   return socket;
 };
 
 export const socketPromise = null;
 
 export const sendMessageWithSocket = async (messageData) => {
-  try {
-    if (!socket || !socket.connected) {
-      await getSocketPromise();
-    }
-
-    if (!socket || !socket.connected) {
-      return await sendMessageViaAPI(messageData);
-    }
-
-    return await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Timeout'));
-      }, CONFIG.SOCKET_TIMEOUT);
-
-      socket.emit('sendMessage', messageData, (response) => {
-        clearTimeout(timeout);
-        
-        if (response?.success) {
-          resolve(response);
-        } else {
-          reject(new Error(response?.error || 'خطا در ارسال'));
-        }
-      });
-    });
-    
-  } catch (error) {
-    console.error('❌ خطا:', error);
-    
-    try {
-      return await sendMessageViaAPI(messageData);
-    } catch (apiError) {
-      throw new Error('ارسال ناموفق: ' + apiError.message);
-    }
+  if (!socket || !socket.connected) {
+    await getSocketPromise();
   }
+
+  if (!socket || !socket.connected) {
+    // فقط وقتی سوکت واقعاً وصل نیست، از API استفاده کن
+    return await sendMessageViaAPI(messageData);
+  }
+
+  return await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Timeout - پاسخی از سرور دریافت نشد'));
+    }, CONFIG.SOCKET_TIMEOUT);
+
+    socket.emit('sendMessage', messageData, (response) => {
+      clearTimeout(timeout);
+      if (response?.success) {
+        resolve(response);
+      } else {
+        reject(new Error(response?.error || 'خطا در ارسال'));
+      }
+    });
+  });
+  // ❌ catch با fallback به API حذف شد - دیگه دوباره امتحان نمی‌کنیم
+  // اگه سوکت خطا داد، خطا رو به caller پاس می‌دیم تا caller تصمیم بگیره
 };
 
 export const sendMessageViaAPI = async (messageData) => {
@@ -309,7 +306,7 @@ export const uploadFile = async (file, onProgress = null) => {
   try {
     console.log('🔑 دریافت توکن برای آپلود...');
     const token = await AsyncStorage.getItem('token');
-    
+
     if (!token) {
       throw new Error('توکن یافت نشد');
     }
@@ -340,7 +337,7 @@ export const uploadFile = async (file, onProgress = null) => {
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      
+
       xhr.upload.addEventListener('progress', (event) => {
         if (event.lengthComputable && onProgress) {
           const progress = (event.loaded / event.total) * 100;
@@ -351,7 +348,7 @@ export const uploadFile = async (file, onProgress = null) => {
 
       xhr.addEventListener('load', () => {
         console.log('📨 پاسخ سرور دریافت شد - وضعیت:', xhr.status);
-        
+
         if (xhr.status === 200) {
           try {
             const response = JSON.parse(xhr.responseText);
@@ -381,7 +378,7 @@ export const uploadFile = async (file, onProgress = null) => {
       xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       xhr.setRequestHeader('Accept', 'application/json');
       xhr.timeout = 120000; // 2 دقیقه
-      
+
       console.log('🚀 ارسال درخواست آپلود...');
       xhr.send(formData);
     });
@@ -396,9 +393,9 @@ export const uploadFile = async (file, onProgress = null) => {
 export const uploadAndSendFile = async (file, messageData, onProgress = null) => {
   try {
     console.log('📤 شروع آپلود فایل:', file);
-    
+
     const uploadResult = await uploadFile(file, onProgress);
-    
+
     if (!uploadResult.success) {
       throw new Error(uploadResult.message || 'آپلود ناموفق');
     }
@@ -412,11 +409,11 @@ export const uploadAndSendFile = async (file, messageData, onProgress = null) =>
     };
 
     console.log('📨 ارسال پیام با فایل:', messageWithFile);
-    
+
     const sendResult = await sendMessageWithSocket(messageWithFile);
-    
+
     console.log('✅ ارسال پیام موفق:', sendResult);
-    
+
     return {
       success: true,
       uploadData: uploadResult.data,
@@ -430,20 +427,22 @@ export const uploadAndSendFile = async (file, messageData, onProgress = null) =>
 };
 
 export const disconnectForLogout = async () => {
+
   if (socket?.connected) {
     try {
-      socket.emit('userLogout', { 
-        userId: currentUserId,
-        timestamp: Date.now() 
-      });
+      // ✅ قبل از disconnect، آفلاین کن
+      socket.emit('userOffline', {userId: currentUserId,timestamp: Date.now()});
+      
+      await new Promise(resolve => setTimeout(resolve, 300));
+      socket.emit('userLogout', {userId: currentUserId,timestamp: Date.now()});
+      currentUserRole = null;
       await new Promise(resolve => setTimeout(resolve, 500));
     } catch (error) {
       console.error('❌ خطا در Logout:', error);
     }
   }
-  
   cleanupSocket();
-  
+
   socket = null;
   socketUrl = null;
   isConnecting = false;
@@ -461,6 +460,7 @@ export const disconnectSocket = () => {
   isInitialized = false;
   connectionAttempts = 0;
   currentUserId = null;
+  currentUserRole = null; 
   socketPromiseResolver = null;
 };
 
@@ -469,6 +469,36 @@ export const forceReconnect = async () => {
   socketPromiseResolver = null;
   await new Promise(resolve => setTimeout(resolve, 1000));
   return await initializeSocket(true);
+};
+// ✅ درست
+export const emitUserOnline = (data) => {
+  try {
+    const sock = getSocket();
+    const uid = data?.userId || currentUserId;
+    const role = data?.role || currentUserRole;
+    if (sock?.connected && uid) {
+      sock.emit('userOnline', { userId: uid, role, timestamp: Date.now() });
+    }
+  } catch (e) {
+    console.error('❌ خطا در emitUserOnline:', e.message);
+  }
+};
+
+export const emitUserOffline = (data) => {
+  try {
+    const sock = getSocket();
+    const uid = data?.userId || currentUserId;
+    const role = data?.role || currentUserRole;
+    if (sock?.connected && uid) {
+      sock.emit('userOffline', { userId: uid, role, timestamp: Date.now() });
+    }
+  } catch (e) {
+    console.error('❌ خطا در emitUserOffline:', e.message);
+  }
+};
+// alias روی getSocketPromise برای استفاده در App.js
+export const initSocket = async () => {
+  return await getSocketPromise();
 };
 
 export default socket;

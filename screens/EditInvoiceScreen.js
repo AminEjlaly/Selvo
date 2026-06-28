@@ -9,20 +9,20 @@ import {
   FlatList,
   Image,
   Modal,
-  Text,
   Platform,
+  Text,
   TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
 
-import { CartContext } from '../CartContext';
-import styles from '../styles/EditInvoiceScreenStyles';
 import { getProducts, getStoredManfiStatus, refreshManfiStatus } from '../api';
-import { clearSelectedCustomer, getSelectedCustomer, saveSelectedCustomer } from '../utils/storage';
-import { updateInvoice } from '../utils/invoiceFileManager';
-import ProductSelectionModal from "../components/ProductSelectionModal";
+import { CartContext } from '../CartContext';
 import ProductModal from "../components/EditModal";
+import ProductSelectionModal from "../components/ProductSelectionModal";
+import styles from '../styles/EditInvoiceScreenStyles';
+import { updateInvoice } from '../utils/invoiceFileManager';
+import { clearSelectedCustomer, getSelectedCustomer, saveSelectedCustomer } from '../utils/storage';
 
 const defaultFont = { fontFamily: "IRANYekan" };
 
@@ -58,7 +58,7 @@ export default function EditInvoiceScreen({ route, navigation }) {
   const [checkDays, setCheckDays] = useState('');
   const [checkFieldVisible, setCheckFieldVisible] = useState(false);
   const [hasManfiAccess, setHasManfiAccess] = useState(false);
-  
+
   const totalCartPrice = cart.reduce((sum, item) => sum + (Number(item.totalPrice) || 0), 0);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
@@ -67,7 +67,7 @@ export default function EditInvoiceScreen({ route, navigation }) {
     const checkManfiAccess = async () => {
       try {
         let manfiStatus = await getStoredManfiStatus();
-        
+
         if (addProductModalVisible) {
           try {
             manfiStatus = await refreshManfiStatus();
@@ -75,9 +75,9 @@ export default function EditInvoiceScreen({ route, navigation }) {
             console.log('⚠️ خطا در بروزرسانی وضعیت manfi');
           }
         }
-        
+
         setHasManfiAccess(manfiStatus);
-        
+
       } catch (error) {
         console.log('❌ خطا در بررسی وضعیت manfi:', error);
         setHasManfiAccess(false);
@@ -240,7 +240,7 @@ export default function EditInvoiceScreen({ route, navigation }) {
   const addProductToCart = (product) => {
     const stock = getProductStock(product);
     const isOutOfStock = stock !== null && stock <= 0;
-    
+
     // فقط اگر موجودی صفر است و کاربر اجازه Manfi ندارد، مانع شو
     if (isOutOfStock && !hasManfiAccess) {
       Alert.alert(
@@ -288,12 +288,12 @@ export default function EditInvoiceScreen({ route, navigation }) {
 
     addToCart(newItem);
     setAddProductModalVisible(false);
-    
+
     Alert.alert(
       'موفقیت',
       '✅ کالا به سبد خرید اضافه شد. لطفاً تعداد مورد نظر را تنظیم کنید.'
     );
-    
+
     setTimeout(() => {
       const newItemIndex = cart.length;
       openModal(newItem, newItemIndex);
@@ -325,7 +325,7 @@ export default function EditInvoiceScreen({ route, navigation }) {
     if (!selectedProduct) return;
 
     const productPrice = parseFloat(selectedProduct.DisplayPrice || selectedProduct.Price || selectedProduct.PriceF1 || 0);
-    
+
     console.log('💵 قیمت محاسبه شده:', productPrice);
 
     const item = {
@@ -534,7 +534,34 @@ export default function EditInvoiceScreen({ route, navigation }) {
       Alert.alert('خطا', 'سبد خرید خالی است');
       return;
     }
+    // بررسی چک
+    if (paymentMethod === 'چک' && (!checkDays || Number(checkDays) <= 0)) {
+      Alert.alert(
+        'خطا',
+        'برای پرداخت چکی، وارد کردن تعداد روز چک الزامی است.'
+      );
+      return;
+    }
 
+
+    // بررسی قیمت کالاها
+    const noPriceItems = cart.filter(item =>
+      !item.totalPrice || Number(item.totalPrice) <= 0
+    );
+
+    if (noPriceItems.length > 0) {
+
+      const itemsName = noPriceItems
+        .map(item => item.Name)
+        .join('\n');
+
+      Alert.alert(
+        'خطای قیمت کالا',
+        `کالاهای زیر فعلاً قیمت ندارند:\n\n${itemsName}\n\nلطفاً حذف یا اصلاح کنید.`
+      );
+
+      return;
+    }
     if (isSubmitting) {
       return;
     }
@@ -672,7 +699,7 @@ export default function EditInvoiceScreen({ route, navigation }) {
           <Text style={[styles.totalText, defaultFont]}>جمع کل سبد: {totalCartPrice.toLocaleString()}</Text>
         </View>
       )}
-      
+
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginTop: 10, paddingBottom: Platform.OS === 'ios' ? 10 : 20 }}>
         <TouchableOpacity
           style={[styles.clearBtn, { backgroundColor: '#140101ff', flex: 1 }]}
@@ -731,142 +758,290 @@ export default function EditInvoiceScreen({ route, navigation }) {
 
       {/* مدال پرداخت */}
       <Modal
-        visible={paymentModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={closePaymentModal}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, ...defaultFont }}>
-              ذخیره تغییرات فاکتور
-            </Text>
+  visible={paymentModalVisible}
+  transparent
+  animationType="slide"
+  onRequestClose={closePaymentModal}
+>
+  <View style={styles.modalContainer}>
+    <View style={styles.modalContent}>
 
-            <View style={{ marginBottom: 15 }}>
-              <Text style={{ fontWeight: 'bold', marginBottom: 5, ...defaultFont }}>مشتری:</Text>
-              <Text style={defaultFont}>{selectedCustomer?.name} (کد: {selectedCustomer?.code})</Text>
-            </View>
+      <Text style={{
+        fontSize: 18,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        marginBottom: 20,
+        ...defaultFont
+      }}>
+        ثبت نهایی فاکتور
+      </Text>
 
-            <View style={{ marginBottom: 15 }}>
-              <Text style={{ fontWeight: 'bold', marginBottom: 5, ...defaultFont }}>مبلغ کل:</Text>
-              <Text style={defaultFont}>{totalCartPrice.toLocaleString()} تومان</Text>
-            </View>
 
-            <View style={{ marginBottom: 15 }}>
-              <Text style={{ fontWeight: 'bold', marginBottom: 10, ...defaultFont }}>نحوه پرداخت:</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-                {['نقدی', 'کارت', 'نسیه'].map((method) => (
-                  <TouchableOpacity
-                    key={method}
-                    style={{
-                      padding: 10,
-                      backgroundColor: paymentMethod === method ? '#c2185b' : '#f0f0f0',
-                      borderRadius: 8,
-                      minWidth: 60,
-                      alignItems: 'center'
-                    }}
-                    onPress={() => {
-                      setPaymentMethod(method);
-                      if (method !== 'چک') {
-                        setCheckDays('');
-                      }
-                    }}
-                  >
-                    <Text style={{ color: paymentMethod === method ? 'white' : 'black', ...defaultFont }}>
-                      {method}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+      <View style={{marginBottom:15}}>
+        <Text style={{fontWeight:'bold',...defaultFont}}>
+          مشتری:
+        </Text>
 
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <TouchableOpacity
-                    style={{
-                      padding: 10,
-                      backgroundColor: paymentMethod === 'چک' ? '#c2185b' : '#f0f0f0',
-                      borderRadius: 8,
-                      minWidth: 60,
-                      alignItems: 'center'
-                    }}
-                    onPress={() => {
-                      setPaymentMethod('چک');
-                    }}
-                  >
-                    <Text style={{ color: paymentMethod === 'چک' ? 'white' : 'black', ...defaultFont }}>
-                      چک
-                    </Text>
-                  </TouchableOpacity>
+        <Text style={defaultFont}>
+          {selectedCustomer?.name}
+          {' '}
+          (کد: {selectedCustomer?.code})
+        </Text>
+      </View>
 
-                  {checkFieldVisible && (
-                    <View style={{ width: 80 }}>
-                      <TextInput
-                        style={{
-                          borderWidth: 1,
-                          borderColor: '#ccc',
-                          borderRadius: 8,
-                          padding: 8,
-                          textAlign: 'center',
-                          fontSize: 14,
-                          height: 40,
-                          minWidth: 80,
-                          ...defaultFont
-                        }}
-                        placeholder="روز"
-                        value={checkDays}
-                        onChangeText={setCheckDays}
-                        keyboardType="numeric"
-                      />
-                    </View>
-                  )}
-                </View>
-              </View>
-            </View>
 
-            <View style={{ marginBottom: 20 }}>
-              <Text style={{ fontWeight: 'bold', marginBottom: 5, ...defaultFont }}>توضیحات (اختیاری):</Text>
-              <TextInput
-                style={{
-                  borderWidth: 1,
-                  borderColor: '#ccc',
-                  borderRadius: 8,
-                  padding: 10,
-                  textAlignVertical: 'top',
-                  minHeight: 80,
-                  ...defaultFont
-                }}
-                placeholder="توضیحات فاکتور..."
-                value={description}
-                onChangeText={setDescription}
-                multiline
-              />
-            </View>
+      <View style={{marginBottom:15}}>
+        <Text style={{fontWeight:'bold',...defaultFont}}>
+          مبلغ کل:
+        </Text>
 
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: 'gray', flex: 1 }]}
-                onPress={closePaymentModal}
-              >
-                <Text style={{ color: '#fff', textAlign: 'center', ...defaultFont }}>بازگشت</Text>
-              </TouchableOpacity>
+        <Text style={defaultFont}>
+          {totalCartPrice.toLocaleString()} تومان
+        </Text>
+      </View>
 
-              <TouchableOpacity
-                style={[
-                  styles.modalButton,
-                  { backgroundColor: 'green', flex: 1 },
-                  isSubmitting && { opacity: 0.6 }
-                ]}
-                onPress={handleUpdateInvoice}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={{ color: '#fff', textAlign: 'center', ...defaultFont }}>ذخیره تغییرات</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
+
+
+      <View style={{marginBottom:15}}>
+
+        <Text style={{
+          fontWeight:'bold',
+          marginBottom:10,
+          ...defaultFont
+        }}>
+          نحوه پرداخت:
+        </Text>
+
+
+        <View style={{
+          flexDirection:'row',
+          flexWrap:'wrap',
+          gap:10,
+          alignItems:'center'
+        }}>
+
+
+        {['نقدی','کارت','نسیه'].map((method)=>(
+
+          <TouchableOpacity
+          key={method}
+          style={{
+            padding:10,
+            backgroundColor:
+            paymentMethod===method
+            ? '#081185ff'
+            : '#f0f0f0',
+            borderRadius:8,
+            minWidth:60,
+            alignItems:'center'
+          }}
+
+          onPress={()=>{
+            setPaymentMethod(method);
+
+            if(method!=='چک'){
+              setCheckDays('');
+            }
+          }}
+          >
+
+          <Text style={{
+            color:
+            paymentMethod===method
+            ? 'white'
+            : 'black',
+            ...defaultFont
+          }}>
+            {method}
+          </Text>
+
+          </TouchableOpacity>
+
+        ))}
+
+
+
+        <View style={{
+          flexDirection:'row',
+          alignItems:'center',
+          gap:5
+        }}>
+
+
+        <TouchableOpacity
+        style={{
+          padding:10,
+          backgroundColor:
+          paymentMethod==='چک'
+          ? '#081185ff'
+          : '#f0f0f0',
+
+          borderRadius:8,
+          minWidth:60,
+          alignItems:'center'
+        }}
+
+        onPress={()=>setPaymentMethod('چک')}
+        >
+
+        <Text style={{
+          color:
+          paymentMethod==='چک'
+          ? 'white'
+          : 'black',
+
+          ...defaultFont
+        }}>
+        چک
+        </Text>
+
+        </TouchableOpacity>
+
+
+
+        {checkFieldVisible && (
+
+        <TextInput
+
+        style={{
+          borderWidth:1,
+          borderColor:'#ccc',
+          borderRadius:8,
+          padding:8,
+          textAlign:'center',
+          height:40,
+          width:80,
+          ...defaultFont
+        }}
+
+        placeholder="روز"
+        value={checkDays}
+        onChangeText={setCheckDays}
+        keyboardType="numeric"
+
+        />
+
+        )}
+
+
         </View>
-      </Modal>
+
+        </View>
+
+      </View>
+
+
+
+      <View style={{marginBottom:20}}>
+
+      <Text style={{
+        fontWeight:'bold',
+        marginBottom:5,
+        ...defaultFont
+      }}>
+      توضیحات :
+      </Text>
+
+
+      <TextInput
+
+      style={{
+        borderWidth:1,
+        borderColor:'#ccc',
+        borderRadius:8,
+        padding:10,
+        minHeight:80,
+        textAlignVertical:'top',
+        ...defaultFont
+      }}
+
+      placeholder="توضیحات فاکتور..."
+      value={description}
+      onChangeText={setDescription}
+      multiline
+
+      />
+
+      </View>
+
+
+
+      <View style={{
+        flexDirection:'row',
+        justifyContent:'space-between',
+        gap:10
+      }}>
+
+
+      <TouchableOpacity
+
+      style={[
+        styles.modalButton,
+        {
+          backgroundColor:'gray',
+          flex:1
+        }
+      ]}
+
+      onPress={closePaymentModal}
+
+      >
+
+      <Text style={{
+        color:'#fff',
+        textAlign:'center',
+        ...defaultFont
+      }}>
+      بازگشت
+      </Text>
+
+      </TouchableOpacity>
+
+
+
+      <TouchableOpacity
+
+      style={[
+        styles.modalButton,
+        {
+          backgroundColor:'#0529a1ff',
+          flex:1
+        },
+
+        isSubmitting && {opacity:0.6}
+
+      ]}
+
+      onPress={handleUpdateInvoice}
+      disabled={isSubmitting}
+
+      >
+
+      {
+      isSubmitting
+      ?
+      <ActivityIndicator size="small" color="#fff"/>
+      :
+      <Text style={{
+        color:'#fff',
+        textAlign:'center',
+        ...defaultFont
+      }}>
+      ذخیره تغییرات
+      </Text>
+      }
+
+
+      </TouchableOpacity>
+
+
+      </View>
+
+
+    </View>
+  </View>
+
+</Modal>
     </View>
   );
 }

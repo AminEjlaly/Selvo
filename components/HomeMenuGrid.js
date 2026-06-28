@@ -170,6 +170,14 @@ const HomeMenuGrid = ({ userRole, userData, onMenuClick, onNavigateWithLocation 
         deliveryOnly: true,
       },
       {
+        icon: "money",
+        iconFamily: "FontAwesome",
+        label: "ثبت پرداخت",
+        screen: "CustomerPayment",
+        gradient: ["#b8a04a", "#92740a"],
+        deliveryOnly: true,
+      },
+      {
         icon: "graduation-cap",
         iconFamily: "FontAwesome",
         label: "آموزش اپلیکیشن",
@@ -196,6 +204,14 @@ const HomeMenuGrid = ({ userRole, userData, onMenuClick, onNavigateWithLocation 
         screen: "ManagerVisitorOrders",
         gradient: ["#0f766e", "#14b8a6"],
         managerOnly: true,
+      },
+      {
+        icon: "receipt",
+        iconFamily: "MaterialIcons",
+        label: "تبدیل پیش فاکتور",
+        screen: "PendingFactorPish",
+        gradient: ["#e11d48", "#be123c"],
+        sellerOnly: true,
       },
     ];
 

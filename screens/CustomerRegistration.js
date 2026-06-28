@@ -33,12 +33,21 @@ const URMIA_LNG = 45.06872;
 const LOCATION_TIMEOUT_MS = 15000;
 
 const validators = {
-  name: (value) => {
-    if (!value.trim()) return 'نام مشتری الزامی است';
-    if (value.length < 2) return 'نام باید حداقل ۲ کاراکتر باشد';
-    if (value.length > 100) return 'نام نمی‌تواند بیش از ۱۰۰ کاراکتر باشد';
+  firstName: (value) => {
+    if (!value.trim()) return 'نام الزامی است';
+    if (value.trim().length < 2) return 'نام باید حداقل ۲ کاراکتر باشد';
+    if (value.length > 50) return 'نام نمی‌تواند بیش از ۵۰ کاراکتر باشد';
     if (!/^[\u0600-\u06FF\sa-zA-Z0-9]+$/.test(value)) {
       return 'نام فقط می‌تواند شامل حروف فارسی، انگلیسی، اعداد و فاصله باشد';
+    }
+    return null;
+  },
+  lastName: (value) => {
+    if (!value.trim()) return 'نام خانوادگی الزامی است';
+    if (value.trim().length < 2) return 'نام خانوادگی باید حداقل ۲ کاراکتر باشد';
+    if (value.length > 50) return 'نام خانوادگی نمی‌تواند بیش از ۵۰ کاراکتر باشد';
+    if (!/^[\u0600-\u06FF\sa-zA-Z0-9]+$/.test(value)) {
+      return 'نام خانوادگی فقط می‌تواند شامل حروف فارسی، انگلیسی، اعداد و فاصله باشد';
     }
     return null;
   },
@@ -66,9 +75,9 @@ const validators = {
     if (value.length > 50) return 'تابلو نمی‌تواند بیش از ۵۰ کاراکتر باشد';
     return null;
   },
-  city:  (value) => (!value ? 'انتخاب شهر الزامی است'  : null),
+  city: (value) => (!value ? 'انتخاب شهر الزامی است' : null),
   masir: (value) => (!value ? 'انتخاب مسیر الزامی است' : null),
-  sanf:  (value) => (!value ? 'انتخاب صنف الزامی است'  : null),
+  sanf: (value) => (!value ? 'انتخاب صنف الزامی است' : null),
 };
 
 const formatPhoneNumber = (value, isMobile = false) => {
@@ -82,24 +91,27 @@ const formatPhoneNumber = (value, isMobile = false) => {
   return cleaned;
 };
 
+// ترکیب نام و نام خانوادگی برای ارسال به سرور به صورت یک فیلد واحد
+const getFullName = (data) => `${data.firstName || ''} ${data.lastName || ''}`.replace(/\s+/g, ' ').trim();
+
 const CustomerRegistration = ({ navigation }) => {
-  const [cities, setCities]       = useState([]);
+  const [cities, setCities] = useState([]);
   const [masirList, setMasirList] = useState([]);
-  const [sanfList, setSanfList]   = useState([]);
-  const [loading, setLoading]           = useState(false);
+  const [sanfList, setSanfList] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
 
-  const [showCityModal, setShowCityModal]               = useState(false);
-  const [showMasirModal, setShowMasirModal]             = useState(false);
-  const [showSanfModal, setShowSanfModal]               = useState(false);
+  const [showCityModal, setShowCityModal] = useState(false);
+  const [showMasirModal, setShowMasirModal] = useState(false);
+  const [showSanfModal, setShowSanfModal] = useState(false);
   const [showCustomerTypeModal, setShowCustomerTypeModal] = useState(false);
-  const [showTitleModal, setShowTitleModal]             = useState(false);
-  const [showOwnershipModal, setShowOwnershipModal]     = useState(false);
+  const [showTitleModal, setShowTitleModal] = useState(false);
+  const [showOwnershipModal, setShowOwnershipModal] = useState(false);
   const [showManualLocationModal, setShowManualLocationModal] = useState(false);
 
   // ── عکس‌های مغازه ──────────────────────────────────────────────────────────
   const [selectedPhotos, setSelectedPhotos] = useState([]); // آرایه uri
-  const [photoError, setPhotoError]         = useState('');
+  const [photoError, setPhotoError] = useState('');
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
 
   // ── اطلاعات دستگاه ─────────────────────────────────────────────────────────
@@ -113,43 +125,43 @@ const CustomerRegistration = ({ navigation }) => {
   const [modalInitialLng, setModalInitialLng] = useState(URMIA_LNG);
 
   const [formData, setFormData] = useState({
-    name: '', addB: '', tblo: '', tel: '', mobile: '',
+    firstName: '', lastName: '', addB: '', tblo: '', tel: '', mobile: '',
     cityCode: '', cityName: '', masirCode: '', masirName: '',
     skh: 'حقیقی', codeSF: '', nameSF: '',
     kindM: 'مالک', onvan: 'آقای', lat: '', lng: ''
   });
 
   const [errors, setErrors] = useState({
-    name: '', tel: '', mobile: '', addB: '', tblo: '', city: '', masir: '', sanf: ''
+    firstName: '', lastName: '', tel: '', mobile: '', addB: '', tblo: '', city: '', masir: '', sanf: ''
   });
 
   const customerTypes = [
-    { label: 'حقیقی',        value: 'حقیقی' },
-    { label: 'حقوقی',        value: 'حقوقی' },
-    { label: 'حقوقی دولتی',  value: 'حقوقی دولتی' }
+    { label: 'حقیقی', value: 'حقیقی' },
+    { label: 'حقوقی', value: 'حقوقی' },
+    { label: 'حقوقی دولتی', value: 'حقوقی دولتی' }
   ];
   const titles = [
-    { label: 'شرکت',      value: 'شرکت' },    { label: 'آقای',     value: 'آقای' },
-    { label: 'خانم',      value: 'خانم' },    { label: 'موسسه',    value: 'موسسه' },
-    { label: 'تعاونی',    value: 'تعاونی' },  { label: 'درمانگاه', value: 'درمانگاه' },
-    { label: 'بیمارستان', value: 'بیمارستان' },{ label: 'داروخانه', value: 'داروخانه' }
+    { label: 'شرکت', value: 'شرکت' }, { label: 'آقای', value: 'آقای' },
+    { label: 'خانم', value: 'خانم' }, { label: 'موسسه', value: 'موسسه' },
+    { label: 'تعاونی', value: 'تعاونی' }, { label: 'درمانگاه', value: 'درمانگاه' },
+    { label: 'بیمارستان', value: 'بیمارستان' }, { label: 'داروخانه', value: 'داروخانه' }
   ];
   const ownershipTypes = [
-    { label: 'مالک',    value: 'مالک' },
-    { label: 'اجاره',   value: 'اجاره' },
+    { label: 'مالک', value: 'مالک' },
+    { label: 'اجاره', value: 'اجاره' },
     { label: 'نامعلوم', value: 'نامعلوم' }
   ];
 
   useEffect(() => {
     loadInitialData();
-    
+
     // گرفتن اطلاعات دستگاه
     const getDeviceInfo = async () => {
       try {
         const deviceName = Device.deviceName || 'Unknown';
-        const modelName  = Device.modelName || Device.modelId || 'Unknown';
-        const osName     = Device.osName || 'Unknown';
-        const osVersion  = Device.osVersion || '';
+        const modelName = Device.modelName || Device.modelId || 'Unknown';
+        const osName = Device.osName || 'Unknown';
+        const osVersion = Device.osVersion || '';
         const manufacturer = Device.manufacturer || '';
 
         const info = `${deviceName} | ${manufacturer} ${modelName} | ${osName} ${osVersion}`;
@@ -189,7 +201,7 @@ const CustomerRegistration = ({ navigation }) => {
   // ── ۲. لوکیشن در بک‌گراند ────────────────────────────────────────────────
   const fetchLocationInBackground = async () => {
     try {
-      const userStr  = await AsyncStorage.getItem('user');
+      const userStr = await AsyncStorage.getItem('user');
       const userData = userStr ? JSON.parse(userStr) : null;
       const isSeller = !userData ||
         userData.role === 'seller' ||
@@ -199,7 +211,7 @@ const CustomerRegistration = ({ navigation }) => {
         setLocationStatus('failed');
         return;
       }
-    } catch {}
+    } catch { }
 
     setLocationStatus('searching');
     locationTimeoutRef.current = setTimeout(() => setLocationStatus('failed'), LOCATION_TIMEOUT_MS);
@@ -295,19 +307,20 @@ const CustomerRegistration = ({ navigation }) => {
   // ── ۷. اعتبارسنجی فرم با چک عکس ─────────────────────────────────────────
   const validateForm = () => {
     const newErrors = {
-      name:  validators.name(formData.name),
-      tel:   validators.tel(formData.tel),
+      firstName: validators.firstName(formData.firstName),
+      lastName: validators.lastName(formData.lastName),
+      tel: validators.tel(formData.tel),
       mobile: validators.mobile(formData.mobile),
-      addB:  validators.addB(formData.addB),
-      tblo:  validators.tblo(formData.tblo),
-      city:  validators.city(formData.cityCode),
+      addB: validators.addB(formData.addB),
+      tblo: validators.tblo(formData.tblo),
+      city: validators.city(formData.cityCode),
       masir: validators.masir(formData.masirCode),
-      sanf:  validators.sanf(formData.codeSF)
+      sanf: validators.sanf(formData.codeSF)
     };
     setErrors(newErrors);
 
     if (!formData.tel.trim() && !formData.mobile.trim()) {
-      newErrors.tel    = 'حداقل یکی از تلفن‌ها باید وارد شود';
+      newErrors.tel = 'حداقل یکی از تلفن‌ها باید وارد شود';
       newErrors.mobile = 'حداقل یکی از تلفن‌ها باید وارد شود';
       setErrors(newErrors);
       return false;
@@ -323,39 +336,43 @@ const CustomerRegistration = ({ navigation }) => {
   };
 
   // ── ۸. handleSubmit ───────────────────────────────────────────────────────
-  const handleSubmit = async () => {
-    if (!validateForm()) {
-      Alert.alert('خطا', 'لطفا خطاهای فرم را برطرف کنید');
-      return;
-    }
-    if (!formData.lat || !formData.lng) {
-      setShowManualLocationModal(true);
-      return;
-    }
-    await doRegister();
-  };
+const handleSubmit = async () => {
+  if (!validateForm()) {
+    Alert.alert('خطا', 'لطفا خطاهای فرم را برطرف کنید');
+    return;
+  }
+  if (!formData.lat || !formData.lng) {
+    setShowManualLocationModal(true);
+    return;
+  }
+  // formData رو مستقیم پاس بده
+  await doRegister(formData);
+};
 
-  const doRegister = async () => {
-    setLoading(true);
-    try {
-      const duplicateCheck = await checkDuplicateCustomer({
-        name:     formData.name.trim(),
-        tel:      formData.tel.trim(),
-        mobile:   formData.mobile.trim(),
-        addB:     formData.addB.trim(),
-        cityCode: formData.cityCode
-      });
-      if (duplicateCheck.isDuplicate) {
-        Alert.alert('خطا', 'مشتری تکراری میباشد');
-        return;
-      }
-      await proceedWithRegistration(formData);
-    } catch (error) {
-      Alert.alert('خطا', error.message || 'خطای ناشناخته در ثبت مشتری');
-    } finally {
-      setLoading(false);
+const doRegister = async (currentFormData) => {  // ← پارامتر اضافه شد
+  setLoading(true);
+  try {
+    console.log('🔍 tblo sending:', currentFormData.tblo); // ← چک کن
+    
+    const duplicateCheck = await checkDuplicateCustomer({
+      name: getFullName(currentFormData),
+      tel: currentFormData.tel.trim(),
+      mobile: currentFormData.mobile.trim(),
+      tblo: currentFormData.tblo.trim(),   // ← از currentFormData بخون
+      cityCode: currentFormData.cityCode
+    });
+    
+    if (duplicateCheck.isDuplicate) {
+      Alert.alert('مشتری تکراری', duplicateCheck.message);
+      return;
     }
-  };
+    await proceedWithRegistration(currentFormData);  // ← اینجا هم
+  } catch (error) {
+    Alert.alert('خطا', error.message || 'خطای ناشناخته در ثبت مشتری');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const generateBuyerCode = async (cityCode) => {
     try {
@@ -385,23 +402,23 @@ const CustomerRegistration = ({ navigation }) => {
       setUploadingPhotos(false);
     }
 
-    // ── ۲. بعد ثبت مشتری — همه فیلدها کامل ──────────
+    // ── ۲. بعد ثبت مشتری — نام و نام‌خانوادگی یکی می‌شن و به سرور می‌رن ──────────
     const customerData = {
       buyerCode,
-      name:      data.name.trim(),
-      tel:       data.tel.trim(),
-      mobile:    data.mobile.trim(),
-      addB:      data.addB.trim(),
-      cityCode:  data.cityCode,
-      cityName:  data.cityName,
-      tblo:      data.tblo.trim(),
-      skh:       data.skh,
-      codeSF:    data.codeSF,
-      nameSF:    data.nameSF,
-      kindM:     data.kindM,
-      onvan:     data.onvan,
-      lat:       data.lat,
-      lng:       data.lng,
+      name: getFullName(data),
+      tel: data.tel.trim(),
+      mobile: data.mobile.trim(),
+      addB: data.addB.trim(),
+      cityCode: data.cityCode,
+      cityName: data.cityName,
+      tblo: data.tblo.trim(),
+      skh: data.skh,
+      codeSF: data.codeSF,
+      nameSF: data.nameSF,
+      kindM: data.kindM,
+      onvan: data.onvan,
+      lat: data.lat,
+      lng: data.lng,
       masirCode: data.masirCode,
       masirName: data.masirName
     };
@@ -414,44 +431,23 @@ const CustomerRegistration = ({ navigation }) => {
   };
 
   // ── ۱۰. تأیید مودال لوکیشن ───────────────────────────────────────────────
-  const handleLocationConfirm = async (coords) => {
-    const updatedForm = {
-      ...formData,
-      lat: coords.latitude.toString(),
-      lng: coords.longitude.toString()
-    };
-    setFormData(updatedForm);
-    setShowManualLocationModal(false);
-
-    if (!formData.lat) {
-      setLoading(true);
-      try {
-        const duplicateCheck = await checkDuplicateCustomer({
-          name:     updatedForm.name.trim(),
-          tel:      updatedForm.tel.trim(),
-          mobile:   updatedForm.mobile.trim(),
-          addB:     updatedForm.addB.trim(),
-          cityCode: updatedForm.cityCode
-        });
-        if (duplicateCheck.isDuplicate) {
-          Alert.alert('خطا', 'مشتری تکراری میباشد');
-          return;
-        }
-        await proceedWithRegistration(updatedForm);
-      } catch (error) {
-        Alert.alert('خطا', error.message || 'خطای ناشناخته');
-      } finally {
-        setLoading(false);
-      }
-    }
+const handleLocationConfirm = async (coords) => {
+  const updatedForm = {
+    ...formData,
+    lat: coords.latitude.toString(),
+    lng: coords.longitude.toString()
   };
+  setFormData(updatedForm);
+  setShowManualLocationModal(false);
+  await doRegister(updatedForm);  // ← updatedForm پاس بده
+};
 
   // ── نشانگر وضعیت لوکیشن ──────────────────────────────────────────────────
   const LocationStatusBadge = () => {
     if (locationStatus !== 'searching' && locationStatus !== 'failed') return null;
     const config = {
       searching: { color: '#F59E0B', bg: '#FFFBEB', text: 'در حال دریافت موقعیت...' },
-      failed:    { color: '#EF4444', bg: '#FEF2F2', text: '⚠ موقعیت دریافت نشد' },
+      failed: { color: '#EF4444', bg: '#FEF2F2', text: '⚠ موقعیت دریافت نشد' },
     }[locationStatus];
     if (!config) return null;
     return (
@@ -532,7 +528,7 @@ const CustomerRegistration = ({ navigation }) => {
           }}
           onPress={handleTakePhoto}
         >
-          <Text style={{ color: '#fff', fontSize: 16 }}>📷</Text>
+          <Text style={{ color: '#fff', fontSize: 16 }}></Text>
           <Text style={{ color: '#fff', fontFamily: 'IRANYekan', fontSize: 12 }}>دوربین</Text>
         </TouchableOpacity>
 
@@ -545,7 +541,7 @@ const CustomerRegistration = ({ navigation }) => {
           }}
           onPress={handlePickPhotos}
         >
-          <Text style={{ color: '#fff', fontSize: 16 }}>🖼</Text>
+          <Text style={{ color: '#fff', fontSize: 16 }}></Text>
           <Text style={{ color: '#fff', fontFamily: 'IRANYekan', fontSize: 12 }}>گالری</Text>
         </TouchableOpacity>
       </View>
@@ -614,18 +610,33 @@ const CustomerRegistration = ({ navigation }) => {
       <LocationStatusBadge />
 
       <View style={styles.inputContainer}>
-        <Text style={styles.label}>نام مشتری *</Text>
+        <Text style={styles.label}>نام *</Text>
         <TextInput
-          style={[styles.input, errors.name && styles.inputError]}
-          value={formData.name}
+          style={[styles.input, errors.firstName && styles.inputError]}
+          value={formData.firstName}
           onChangeText={(value) => {
-            setFormData(prev => ({ ...prev, name: value }));
-            setErrors(prev => ({ ...prev, name: validators.name(value) }));
+            setFormData(prev => ({ ...prev, firstName: value }));
+            setErrors(prev => ({ ...prev, firstName: validators.firstName(value) }));
           }}
-          placeholder="نام کامل مشتری را وارد کنید"
+          placeholder="نام مشتری را وارد کنید"
           textAlign="right"
         />
-        {errors.name ? <Text style={styles.errorText}>{errors.name}</Text> : null}
+        {errors.firstName ? <Text style={styles.errorText}>{errors.firstName}</Text> : null}
+      </View>
+
+      <View style={styles.inputContainer}>
+        <Text style={styles.label}>نام خانوادگی *</Text>
+        <TextInput
+          style={[styles.input, errors.lastName && styles.inputError]}
+          value={formData.lastName}
+          onChangeText={(value) => {
+            setFormData(prev => ({ ...prev, lastName: value }));
+            setErrors(prev => ({ ...prev, lastName: validators.lastName(value) }));
+          }}
+          placeholder="نام خانوادگی مشتری را وارد کنید"
+          textAlign="right"
+        />
+        {errors.lastName ? <Text style={styles.errorText}>{errors.lastName}</Text> : null}
       </View>
 
       <View style={styles.inputContainer}>
@@ -826,7 +837,7 @@ const CustomerRegistration = ({ navigation }) => {
 
       <ManualLocationModal
         visible={showManualLocationModal}
-        buyerName={formData.name || 'مشتری جدید'}
+        buyerName={getFullName(formData) || 'مشتری جدید'}
         initialLat={modalInitialLat}
         initialLng={modalInitialLng}
         onConfirm={handleLocationConfirm}

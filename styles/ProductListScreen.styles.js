@@ -602,4 +602,5 @@ export default StyleSheet.create({
   priceSection: {
     flex: 1,
   },
+  
 });

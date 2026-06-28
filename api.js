@@ -1036,6 +1036,7 @@ export const checkDuplicateCustomer = async (customerData) => {
       tel: customerData.tel,
       mobile: customerData.mobile,
       addB: customerData.addB,
+      tblo: customerData.tblo || '', 
       cityCode: customerData.cityCode
     };
 
@@ -3065,6 +3066,100 @@ export const uploadCustomerPhotos = async (buyerCode, photoUris, deviceInfo = ''
 
     if (!response.ok || !data.success) {
       throw new Error(data.message || 'خطا در آپلود عکس‌ها');
+    }
+
+    return data;
+  } catch (err) {
+    if (err.message === 'Network request failed') {
+      throw new Error('ارتباط با سرور برقرار نشد');
+    }
+    throw err;
+  }
+};
+// ============================================
+// 📌 توابع جدید برای انتخاب شهر و مشتری
+// ============================================
+
+export const getBuyersByCityCode = async (cityCode) => {
+  try {
+    const headers = await getAuthHeaders();
+    const baseUrl = await getServerUrl();
+    
+    if (!cityCode) {
+      throw new Error('کد شهر ارسال نشده است');
+    }
+    
+    const res = await fetch(`${baseUrl}/api/buyers?cityCode=${cityCode}`, { headers });
+    return await handleResponse(res);
+  } catch (err) {
+    if (err.message === 'Network request failed') throw new Error('ارتباط با سرور برقرار نشد');
+    throw err;
+  }
+};
+
+/**
+ * دریافت لیست مشتری‌های یک شهر با مسیر جایگزین
+ * @param {string} cityCode - کد شهر
+ * @returns {Promise<Array>} - لیست مشتری‌های آن شهر
+ */
+export const getCustomersByCity = async (cityCode) => {
+  try {
+    const headers = await getAuthHeaders();
+    const baseUrl = await getServerUrl();
+    
+    if (!cityCode) {
+      throw new Error('کد شهر ارسال نشده است');
+    }
+    
+    const res = await fetch(`${baseUrl}/api/buyers/by-city/${cityCode}`, { headers });
+    return await handleResponse(res);
+  } catch (err) {
+    if (err.message === 'Network request failed') throw new Error('ارتباط با سرور برقرار نشد');
+    throw err;
+  }
+};
+// --- ثبت پرداخت مشتری (نقد / حواله / پوز / چک) ---
+export const submitCustomerPayment = async (paymentData, imageUri = null) => {
+  try {
+    const token = await AsyncStorage.getItem('token');
+    const baseUrl = await getServerUrl();
+
+    const formData = new FormData();
+    formData.append('CustomerCode', paymentData.CustomerCode);
+    formData.append('CustomerName', paymentData.CustomerName);
+    formData.append('PaymentType', paymentData.PaymentType);
+    formData.append('Amount', paymentData.Amount);
+    formData.append('SerialNumber', paymentData.SerialNumber || '');
+    formData.append('CheckDueDate', paymentData.CheckDueDate || '');
+    formData.append('SayyadiNumber', paymentData.SayyadiNumber || '');
+    formData.append('Description', paymentData.Description || '');
+
+    if (imageUri) {
+      const ext = imageUri.split('.').pop().toLowerCase() || 'jpg';
+      formData.append('image', {
+        uri: imageUri,
+        type: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+        name: `pay_${Date.now()}.${ext}`,
+      });
+    }
+
+    const response = await fetch(`${baseUrl}/api/payments/customer`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error('پاسخ سرور نامعتبر است');
+    }
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || 'خطا در ثبت پرداخت');
     }
 
     return data;

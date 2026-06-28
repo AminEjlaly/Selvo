@@ -40,15 +40,15 @@ export default function DeliveryOrdersScreen({ navigation }) {
   const loadAvailableExits = async () => {
     try {
       const response = await getDeliveryExits();
-      
+
       if (response.success) {
         setAvailableExits(response.data?.exits || []);
-        
+
         // تنظیم اولین خروجی به عنوان پیش‌فرض
         if (response.data?.exits?.length > 0 && !selectedExit) {
           setSelectedExit(response.data.exits[0].exitCode);
         }
-        
+
       } else {
         console.log('❌ Failed to load exits:', response.message);
       }
@@ -61,7 +61,7 @@ export default function DeliveryOrdersScreen({ navigation }) {
   const loadOrders = async () => {
     try {
       setLoading(true);
-      
+
       const exitParam = selectedExit;
       const response = await getDeliveryOrders(exitParam);
       if (response.success) {
@@ -132,7 +132,7 @@ export default function DeliveryOrdersScreen({ navigation }) {
 
   const getSelectedExitInfo = () => {
     if (!selectedExit) return 'در حال بارگذاری...';
-    
+
     const exit = availableExits.find(e => e.exitCode == selectedExit);
     if (exit) {
       return `خروجی ${exit.exitCode} - ${exit.exitDate}`;
@@ -152,6 +152,36 @@ export default function DeliveryOrdersScreen({ navigation }) {
     navigation.navigate('MapDeliveri', {
       filterExit: selectedExit
     });
+  };
+  // محاسبه جمع مبلغ کل فاکتورها
+  const calculateTotalAmount = () => {
+    if (!ordersData?.dates) return 0;
+
+    let total = 0;
+    ordersData.dates.forEach(dateGroup => {
+      dateGroup.exits?.forEach(exit => {
+        if (exit.amount && exit.invoiceNumber) {
+          total += Number(exit.amount);
+        }
+      });
+    });
+    return total;
+  };
+
+  const totalAmount = calculateTotalAmount();
+  // محاسبه تعداد فاکتورهای دارای مبلغ
+  const calculateInvoiceCount = () => {
+    if (!ordersData?.dates) return 0;
+
+    let count = 0;
+    ordersData.dates.forEach(dateGroup => {
+      dateGroup.exits?.forEach(exit => {
+        if (exit.amount && exit.invoiceNumber) {
+          count++;
+        }
+      });
+    });
+    return count;
   };
 
   const renderOrderItem = ({ item, index }) => (
@@ -206,10 +236,10 @@ export default function DeliveryOrdersScreen({ navigation }) {
             <View style={styles.amountContainer}>
               <Text style={styles.amountLabel}>مبلغ فاکتور:</Text>
               <Text style={styles.amountValue}>
-                {formatPrice(item.amount)} تومان
+                {formatPrice(item.amount)}
               </Text>
             </View>
-            
+
             {item.invoiceNumber && (
               <TouchableOpacity
                 style={styles.invoiceDetailsButton}
@@ -271,10 +301,12 @@ export default function DeliveryOrdersScreen({ navigation }) {
       {/* هدر صفحه */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>
-            لیست خروجی‌ها
-          </Text>
-          
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTotalAmount}>
+              جمع کل : {formatPrice(totalAmount)} 
+            </Text>
+          </View>
+
           <TouchableOpacity
             style={styles.deliveryRouteButton}
             onPress={goToDeliveryMap}
@@ -284,11 +316,12 @@ export default function DeliveryOrdersScreen({ navigation }) {
             <Text style={styles.deliveryRouteButtonText}>مسیر تحویل</Text>
           </TouchableOpacity>
         </View>
-        
+
         {ordersData && (
           <Text style={styles.headerSubtitle}>
-            {ordersData.deliveryName || 'تحویل‌دار'} - 
-            تعداد کل خروجی‌ها: {availableExits.length || 0}
+            {ordersData.deliveryName || 'تحویل‌دار'} -
+            تعداد فاکتورها: {calculateInvoiceCount()} -
+            تعداد خروجی‌ها: {availableExits.length || 0}
           </Text>
         )}
       </View>
@@ -345,7 +378,7 @@ export default function DeliveryOrdersScreen({ navigation }) {
           <View style={styles.emptyContainer}>
             <FontAwesome name="inbox" size={60} color="#cbd5e1" />
             <Text style={styles.emptyText}>
-              {selectedExit 
+              {selectedExit
                 ? `خروجی‌ای برای کد ${selectedExit} یافت نشد`
                 : 'هیچ خروجی‌ای یافت نشد'
               }
@@ -364,7 +397,7 @@ export default function DeliveryOrdersScreen({ navigation }) {
         animationType="fade"
         onRequestClose={() => setShowExitPicker(false)}
       >
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
           onPress={() => setShowExitPicker(false)}
@@ -374,7 +407,7 @@ export default function DeliveryOrdersScreen({ navigation }) {
               <View style={styles.datePickerHeader}>
                 <Text style={styles.datePickerTitle}>انتخاب خروجی</Text>
                 <Text style={styles.datePickerSubtitle}>لیست تمام خروجی‌ها ({availableExits.length})</Text>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.closeButton}
                   onPress={() => setShowExitPicker(false)}
                 >
@@ -382,7 +415,7 @@ export default function DeliveryOrdersScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView 
+              <ScrollView
                 style={styles.datesList}
                 showsVerticalScrollIndicator={false}
               >
@@ -434,112 +467,111 @@ export default function DeliveryOrdersScreen({ navigation }) {
       </Modal>
 
       {/* مدال جزئیات خروجی */}
-      <Modal
-        visible={showDetailModal}
-        transparent
-        animationType="fade"
-        onRequestClose={closeDetailModal}
-      >
-        <TouchableOpacity 
-          style={styles.modalOverlay}
-          activeOpacity={1}
+<Modal
+  visible={showDetailModal}
+  transparent
+  animationType="slide"        // تغییر به slide برای حس بهتر
+  onRequestClose={closeDetailModal}
+>
+  <TouchableOpacity
+    style={styles.modalOverlay}
+    activeOpacity={1}
+    onPress={closeDetailModal}
+  >
+    <View style={styles.detailModalContainer}>
+      {/* هدر */}
+      <View style={styles.detailModalHeader}>
+        <Text style={styles.detailModalTitle}>جزئیات خروجی</Text>
+        <TouchableOpacity
+          style={styles.closeButton}
           onPress={closeDetailModal}
         >
-          <View style={styles.modalContent}>
-            <View style={styles.detailModalContainer}>
-              <View style={styles.detailModalHeader}>
-                <Text style={styles.detailModalTitle}>جزئیات خروجی</Text>
-                <TouchableOpacity 
-                  style={styles.closeButton}
-                  onPress={closeDetailModal}
-                >
-                  <FontAwesome name="times" size={20} color="#64748b" />
-                </TouchableOpacity>
+          <FontAwesome name="times" size={22} color="#cbd5e1" />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView style={styles.detailContent} showsVerticalScrollIndicator={false}>
+        {selectedOrder && (
+          <>
+            {/* اطلاعات خروجی */}
+            <View style={styles.detailSection}>
+              <Text style={styles.detailSectionTitle}>اطلاعات خروجی</Text>
+              
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>کد خروجی:</Text>
+                <Text style={styles.detailValue}>{selectedOrder.exitCode}</Text>
               </View>
 
-              <ScrollView 
-                style={styles.detailContent}
-                showsVerticalScrollIndicator={false}
-              >
-                {selectedOrder && (
-                  <>
-                    <View style={styles.detailSection}>
-                      <Text style={styles.detailSectionTitle}>اطلاعات خروجی</Text>
-                      <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>کد خروجی:</Text>
-                        <Text style={styles.detailValue}>
-                          {selectedOrder.exitCode || 'نامشخص'}
-                        </Text>
-                      </View>
-                      {selectedOrder.invoiceNumber && (
-                        <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>شماره فاکتور:</Text>
-                          <Text style={styles.detailValue}>
-                            {selectedOrder.invoiceNumber}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-
-                    {selectedOrder.invoiceNumber && selectedOrder.buyer && (
-                      <>
-                        <View style={styles.detailSection}>
-                          <Text style={styles.detailSectionTitle}>اطلاعات خریدار</Text>
-                          <View style={styles.detailRow}>
-                            <Text style={styles.detailLabel}>کد مشتری:</Text>
-                            <Text style={styles.detailValue}>
-                              {selectedOrder.buyer.code || 'نامشخص'}
-                            </Text>
-                          </View>
-                          <View style={styles.detailRow}>
-                            <Text style={styles.detailLabel}>نام:</Text>
-                            <Text style={styles.detailValue}>
-                              {selectedOrder.buyer.name || 'نامشخص'}
-                            </Text>
-                          </View>
-                          <View style={styles.detailRow}>
-                            <Text style={styles.detailLabel}>آدرس:</Text>
-                            <Text style={styles.detailValue}>
-                              {selectedOrder.buyer.address || 'ثبت نشده'}
-                            </Text>
-                          </View>
-                          {selectedOrder.buyer.tablo && (
-                            <View style={styles.detailRow}>
-                              <Text style={styles.detailLabel}>تابلو:</Text>
-                              <Text style={styles.detailValue}>
-                                {selectedOrder.buyer.tablo}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-
-                        <View style={styles.detailSection}>
-                          <Text style={styles.detailSectionTitle}>اطلاعات مالی</Text>
-                          <Text style={styles.detailAmount}>
-                            {formatPrice(selectedOrder.amount)} تومان
-                          </Text>
-                        </View>
-                      </>
-                    )}
-
-                    {!selectedOrder.invoiceNumber && (
-                      <View style={styles.detailSection}>
-                        <Text style={styles.detailSectionTitle}>وضعیت</Text>
-                        <View style={[styles.noInvoiceContainer, { marginTop: 0 }]}>
-                          <FontAwesome name="info-circle" size={18} color="#f59e0b" />
-                          <Text style={styles.noInvoiceText}>
-                            {selectedOrder.message || 'فاکتور مرتبطی برای این خروجی یافت نشد'}
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-                  </>
-                )}
-              </ScrollView>
+              {selectedOrder.invoiceNumber && (
+                <View style={[styles.detailRow, styles.detailRowLast]}>
+                  <Text style={styles.detailLabel}>شماره فاکتور:</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={styles.detailValue}>{selectedOrder.invoiceNumber}</Text>
+                    {/* دکمه کپی */}
+                    <TouchableOpacity style={styles.copyButton} onPress={() => { /* کپی به کلیپ‌بورد */ }}>
+                      <FontAwesome name="copy" size={16} color="#64748b" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
             </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+
+            {/* اطلاعات خریدار */}
+            {selectedOrder.buyer && (
+              <View style={styles.detailSection}>
+                <Text style={styles.detailSectionTitle}>اطلاعات خریدار</Text>
+                
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>کد مشتری:</Text>
+                  <Text style={styles.detailValue}>{selectedOrder.buyer.code || '—'}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>نام خریدار:</Text>
+                  <Text style={styles.detailValue}>{selectedOrder.buyer.name}</Text>
+                </View>
+                <View style={[styles.detailRow, styles.detailRowLast]}>
+                  <Text style={styles.detailLabel}>آدرس:</Text>
+                  <Text style={styles.detailValue} numberOfLines={3}>
+                    {selectedOrder.buyer.address || 'ثبت نشده'}
+                  </Text>
+                </View>
+                {selectedOrder.buyer.tablo && (
+                  <View style={[styles.detailRow, styles.detailRowLast]}>
+                    <Text style={styles.detailLabel}>تابلو:</Text>
+                    <Text style={styles.detailValue}>{selectedOrder.buyer.tablo}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* اطلاعات مالی */}
+            {selectedOrder.invoiceNumber && (
+              <View style={styles.detailSection}>
+                <Text style={styles.detailSectionTitle}>اطلاعات مالی</Text>
+                <View style={styles.detailAmountContainer}>
+                  <Text style={styles.detailAmount}>
+                    {formatPrice(selectedOrder.amount)}
+                  </Text>
+                  
+                </View>
+              </View>
+            )}
+
+            {/* وضعیت بدون فاکتور */}
+            {!selectedOrder.invoiceNumber && (
+              <View style={styles.noInvoiceDetailContainer}>
+                <FontAwesome name="exclamation-triangle" size={24} color="#f59e0b" />
+                <Text style={styles.noInvoiceDetailText}>
+                  {selectedOrder.message || 'فاکتور مرتبطی برای این خروجی یافت نشد'}
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+      </ScrollView>
+    </View>
+  </TouchableOpacity>
+</Modal>
     </View>
   );
 }
