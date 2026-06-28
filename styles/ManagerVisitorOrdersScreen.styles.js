@@ -284,7 +284,7 @@ export const itemSt = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    backgroundColor: '#E8EEFA',
+    backgroundColor: '#1e2937',
     paddingVertical: 9,
     paddingHorizontal: 10,
     alignItems: 'center',
@@ -322,7 +322,7 @@ export const itemSt = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: '#E8EEFA',
+    backgroundColor: '#1e2937',
     borderTopWidth: 1,
     borderTopColor: C.divider,
   },

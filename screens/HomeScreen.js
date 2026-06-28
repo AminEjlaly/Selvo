@@ -71,42 +71,13 @@ const HomeScreen = ({ navigation, route }) => {
   }, []);
 
   // 🔥 تابع برای ارسال سریع لوکیشن
- const sendLocationOnMenuClick = async (menuName) => {
-  try {
-    // فقط برای seller لوکیشن بفرست
-    if (userType !== 'seller') {
-      console.log(`📌 کاربر از نوع ${userType} - نیازی به ثبت لوکیشن نیست`);
-      return;
-    }
-
-    if (!visitorInfo) {
-      console.log('⚠️ visitorInfo موجود نیست');
-      return;
-    }
-
-    // 🔍 چک مجوز مدیر
-    const { checkTrackingEnabled } = require('../services/locationService');
-    const trackingAllowed = await checkTrackingEnabled();
-    if (!trackingAllowed) {
-      console.log('🚫 Location tracking disabled by manager');
-      return;
-    }
-
-    console.log(`📍 ارسال لوکیشن برای منو: ${menuName}`);
-
-    sendQuickLocation(visitorInfo).then(success => {
-      if (success) {
-        console.log(`✅ لوکیشن برای منو "${menuName}" ثبت شد`);
-      } else {
-        console.log(`⚠️ ثبت لوکیشن برای منو "${menuName}" ناموفق بود`);
-      }
-    }).catch(err => {
-      console.log(`❌ خطا در ثبت لوکیشن: ${err.message}`);
-    });
-
-  } catch (error) {
-    console.log(`❌ خطا در ارسال لوکیشن برای منو ${menuName}:`, error.message);
-  }
+const sendLocationOnMenuClick = async (menuName) => {
+  if (userType !== 'seller' || !visitorInfo) return;
+  
+  // ← فقط یه ارسال سریع، بدون دست زدن به tracking
+  sendQuickLocation(visitorInfo).catch(err => 
+    console.log(`❌ خطا در ثبت لوکیشن: ${err.message}`)
+  );
 };
 
   // تابع کمکی برای تشخیص نقش کاربر

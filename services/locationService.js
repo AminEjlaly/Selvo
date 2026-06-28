@@ -8,56 +8,34 @@ import { APP_CONFIG, getServerUrl } from '../config';
 const VISITOR_INFO_KEY = 'visitor_info';
 const LOCATION_PERMISSION_KEY = 'location_permission_granted';
 const BACKGROUND_LOCATION_TASK = 'BACKGROUND_LOCATION_TASK';
-
+let isStarting = false; // ← lock جدید
 let locationIntervalId = null;
 let statusIntervalId = null;
 let lastSent = 0;
 let isRunning = false;
 let retryCount = 0;
 
+// ─── شماره نسخه جلسه ارسال — برای حذف race condition بین فراخوانی‌های هم‌زمان ───
+let currentSessionId = 0;
+
 // ──────────────────────────────────────────────
-// 🔵 تعریف Background Task (باید بیرون از کامپوننت باشد)
+// ⛔️ Background Task — غیرفعال شد
+// این تسک دیگه هیچ‌جا start نمیشه و هیچ ارسالی انجام نمیده.
+// تعریفش فقط برای این نگه داشته شده که اگه روی دستگاهی از نسخه‌های
+// قبلی برنامه از قبل توی سیستم‌عامل ثبت شده باشه، بتونیم با
+// stopBackgroundLocationTask() پیداش کنیم و متوقفش کنیم.
 // ──────────────────────────────────────────────
-TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
-  if (error) {
-    console.log('❌ Background task error:', error.message);
-    return;
-  }
-
-  if (data) {
-    const { locations } = data;
-    const location = locations[0];
-
-    if (!location) return;
-
-    try {
-      const visitorInfoRaw = await AsyncStorage.getItem(VISITOR_INFO_KEY);
-      if (!visitorInfoRaw) {
-        console.log('⚠️ Background: اطلاعات ویزیتور یافت نشد');
-        return;
-      }
-
-      const visitorInfo = JSON.parse(visitorInfoRaw);
-      const { latitude: Lat, longitude: Lng } = location.coords;
-
-      console.log(`📍 Background: ارسال موقعیت ${Lat}, ${Lng}`);
-
-      await sendVisitorLocation({ ...visitorInfo, Lat, Lng });
-      console.log('✅ Background: ارسال موفق');
-    } catch (err) {
-      console.log('❌ Background: خطا در ارسال:', err.message);
-    }
-  }
+TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async () => {
+  return; // عمداً خالی — دیگه چیزی ارسال نمی‌کند
 });
 
 // ──────────────────────────────────────────────
-// 🔐 درخواست همه مجوزهای لازم
+// 🔐 درخواست مجوز
 // ──────────────────────────────────────────────
 export const requestAllPermissions = async () => {
   if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) return false;
 
   try {
-    // مرحله ۱: مجوز Foreground
     console.log('📍 درخواست مجوز foreground...');
     const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
 
@@ -68,44 +46,28 @@ export const requestAllPermissions = async () => {
 
     console.log('✅ مجوز foreground تأیید شد');
 
-    // مرحله ۲: مجوز Background
-    console.log('📍 درخواست مجوز background...');
-    const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
-    const bgGranted = bgStatus === 'granted';
-
-    console.log(`📍 مجوز background: ${bgStatus}`);
-
     await AsyncStorage.setItem(LOCATION_PERMISSION_KEY, JSON.stringify({
       foreground: true,
-      background: bgGranted
+      background: false
     }));
 
-    return { foreground: true, background: bgGranted };
+    return { foreground: true, background: false };
   } catch (err) {
     console.log('❌ خطا در درخواست مجوز:', err.message);
     return { foreground: false, background: false };
   }
 };
 
-// ──────────────────────────────────────────────
-// 🔍 بررسی وضعیت فعلی مجوزها
-// ──────────────────────────────────────────────
 export const checkPermissionsStatus = async () => {
   try {
     const { status: fgStatus } = await Location.getForegroundPermissionsAsync();
-    const { status: bgStatus } = await Location.getBackgroundPermissionsAsync();
-
-    return {
-      foreground: fgStatus === 'granted',
-      background: bgStatus === 'granted'
-    };
+    return { foreground: fgStatus === 'granted', background: false };
   } catch (error) {
     console.log('❌ خطا در بررسی مجوز:', error.message);
     return { foreground: false, background: false };
   }
 };
 
-// backward-compat برای کدهای قدیمی
 export const requestLocationPermission = async () => {
   const result = await requestAllPermissions();
   return result?.foreground ?? false;
@@ -121,6 +83,12 @@ export const checkActualPermissionStatus = async () => {
 // ──────────────────────────────────────────────
 export const sendVisitorLocation = async ({ VisitorCode, VisitorName, Lat, Lng }) => {
   if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) return false;
+
+  if (!VisitorCode || VisitorCode === 'unknown') {
+    console.log('⛔ ارسال لوکیشن لغو شد — VisitorCode نامعتبر است');
+    return false;
+  }
+
   try {
     const baseUrl = await getServerUrl();
     const now = new Date();
@@ -152,49 +120,7 @@ export const sendVisitorLocation = async ({ VisitorCode, VisitorName, Lat, Lng }
 };
 
 // ──────────────────────────────────────────────
-// 🚀 شروع Background Location Task
-// ──────────────────────────────────────────────
-export const startBackgroundLocationTask = async (visitorInfo) => {
-  if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) return false;
-
-  try {
-    // ذخیره اطلاعات ویزیتور برای استفاده در background task
-    await AsyncStorage.setItem(VISITOR_INFO_KEY, JSON.stringify(visitorInfo));
-
-    const isTaskRunning = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)
-      .catch(() => false);
-
-    if (isTaskRunning) {
-      console.log('📍 Background task از قبل در حال اجراست');
-      return true;
-    }
-
-    await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-      accuracy: Location.Accuracy.Balanced,
-      timeInterval: 60000,        // هر ۶۰ ثانیه
-      distanceInterval: 50,        // یا هر ۵۰ متر
-      deferredUpdatesInterval: 60000,
-      deferredUpdatesDistance: 50,
-      showsBackgroundLocationIndicator: true,  // iOS: نشانگر آبی بالا
-      foregroundService: {          // Android: notification پس‌زمینه
-        notificationTitle: 'ردیابی موقعیت',
-        notificationBody: 'موقعیت شما در حال ارسال است',
-        notificationColor: '#0622a3',
-      },
-      pausesUpdatesAutomatically: false,
-      activityType: Location.ActivityType.AutomotiveNavigation,
-    });
-
-    console.log('✅ Background location task شروع شد');
-    return true;
-  } catch (err) {
-    console.log('❌ خطا در شروع background task:', err.message);
-    return false;
-  }
-};
-
-// ──────────────────────────────────────────────
-// ⏹ توقف Background Task
+// ⏹ توقف/پاکسازی Background Task قدیمی
 // ──────────────────────────────────────────────
 export const stopBackgroundLocationTask = async () => {
   try {
@@ -203,7 +129,7 @@ export const stopBackgroundLocationTask = async () => {
 
     if (isTaskRunning) {
       await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-      console.log('✅ Background task متوقف شد');
+      console.log('✅ Background task قدیمی پیدا و متوقف شد');
     }
   } catch (err) {
     console.log('❌ خطا در توقف background task:', err.message);
@@ -211,7 +137,7 @@ export const stopBackgroundLocationTask = async () => {
 };
 
 // ──────────────────────────────────────────────
-// 🔄 ارسال خودکار (Foreground)
+// 🔄 ارسال خودکار (فقط Foreground — هر دقیقه)
 // ──────────────────────────────────────────────
 export const getCurrentPosition = async (options = {}) => {
   if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) return null;
@@ -234,30 +160,48 @@ export const getCurrentPosition = async (options = {}) => {
 export const startAutoSendLocation = async (visitorInfo, options = {}) => {
   if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) return false;
 
+  // ← اگه در حال شروع هستیم، درخواست جدید رو نادیده بگیر
+  if (isStarting) {
+    console.log('⏭ startAutoSendLocation در حال اجراست — نادیده گرفته شد');
+    return null;
+  }
+  isStarting = true;
+
   const config = {
     intervalMs: 60 * 1000,
-    minInterval: 10000,
+    minInterval: 55 * 1000,  // ← باید نزدیک به intervalMs باشه، نه 10 ثانیه
     maxRetries: 3,
     ...options
   };
-
-  if (!visitorInfo?.VisitorCode) {
-    console.log('❌ اطلاعات ویزیتور نامعتبر');
+  if (!visitorInfo?.VisitorCode || visitorInfo.VisitorCode === 'unknown') {
+    console.log('❌ اطلاعات ویزیتور نامعتبر — ارسال شروع نشد');
     return null;
   }
 
-  stopAutoSendLocation();
+  // ─── نسخه جدید این جلسه ارسال ───
+  // هر فراخوانی، حتی اگه با فراخوانی قبلی race بشه، این عدد رو افزایش
+  // می‌دهد. هر تایمر قدیمی توی تیک بعدی خودش چک می‌کند که آیا هنوز
+  // session فعال هست یا نه و اگه نبود خودش را پاک می‌کند.
+  const mySession = ++currentSessionId;
 
-  // ذخیره اطلاعات ویزیتور
+  // پاکسازی فوری (synchronous) تایمر فعلی - قبل از هر await
+  if (locationIntervalId) {
+    clearInterval(locationIntervalId);
+    locationIntervalId = null;
+  }
+  isRunning = false;
+
+  await stopBackgroundLocationTask().catch(() => {});
+
   await AsyncStorage.setItem(VISITOR_INFO_KEY, JSON.stringify(visitorInfo));
 
   const { foreground } = await checkPermissionsStatus();
   if (!foreground) throw new Error('PERMISSION_DENIED');
 
-  // شروع background task
-  const { background } = await checkPermissionsStatus();
-  if (background) {
-    await startBackgroundLocationTask(visitorInfo);
+  // اگه در همین فاصله یه فراخوانی جدیدتر شروع شده، این یکی رو لغو کن
+  if (mySession !== currentSessionId) {
+    console.log('⏭ session جدیدتری شروع شده — این فراخوانی نادیده گرفته شد');
+    return null;
   }
 
   // ارسال اولیه
@@ -272,10 +216,17 @@ export const startAutoSendLocation = async (visitorInfo, options = {}) => {
     if (error.message === 'PERMISSION_DENIED') throw error;
   }
 
+  if (mySession !== currentSessionId) return null;
+
   isRunning = true;
   retryCount = 0;
 
-  locationIntervalId = setInterval(async () => {
+  const myIntervalId = setInterval(async () => {
+    // ─── اگه session عوض شده (یه startAutoSendLocation جدید اومده) خودشو پاک کن ───
+    if (mySession !== currentSessionId) {
+      clearInterval(myIntervalId);
+      return;
+    }
     if (!isRunning) return;
 
     const now = Date.now();
@@ -297,10 +248,14 @@ export const startAutoSendLocation = async (visitorInfo, options = {}) => {
     }
   }, config.intervalMs);
 
-  return locationIntervalId;
+  locationIntervalId = myIntervalId;
+   isStarting = false;
+  return myIntervalId;
 };
 
 export const stopAutoSendLocation = () => {
+  // ─── باطل کردن هر session فعال - تایمرهای قدیمی خودشون پاک میشن ───
+  currentSessionId++;
   isRunning = false;
   if (locationIntervalId) { clearInterval(locationIntervalId); locationIntervalId = null; }
   if (statusIntervalId) { clearInterval(statusIntervalId); statusIntervalId = null; }
@@ -315,7 +270,13 @@ export const sendSingleLocation = async (visitorInfo) => {
   return true;
 };
 
+// جدید — با throttle 60 ثانیه
 export const sendQuickLocation = async (visitorInfo) => {
+  const now = Date.now();
+  if (now - lastSent < 60 * 1000) {
+    console.log(`⏭ sendQuickLocation رد شد — ${Math.round((60000 - (now - lastSent)) / 1000)}s مانده`);
+    return false;
+  }
   try {
     const { foreground } = await checkPermissionsStatus();
     if (!foreground) return false;
@@ -356,7 +317,6 @@ export const checkTrackingEnabled = async () => {
     const token = await AsyncStorage.getItem('token');
     if (!token) return true;
 
-    // ── آدرس سرور رو مثل بقیه جاها بساز ──
     const connectionType = await AsyncStorage.getItem('connection_type');
     let serverUrl = '';
 
@@ -368,7 +328,7 @@ export const checkTrackingEnabled = async () => {
       serverUrl = ip && port ? `http://${ip}:${port}` : '';
     }
 
-    if (!serverUrl) return true; // سرور تنظیم نشده → فعال بمون
+    if (!serverUrl) return true;
 
     const response = await fetch(`${serverUrl}/api/location-tracking/status`, {
       headers: { 'Authorization': `Bearer ${token}` },
@@ -380,6 +340,6 @@ export const checkTrackingEnabled = async () => {
     return data?.data?.locationTrackingEnabled !== false;
 
   } catch {
-    return true; // fail-safe
+    return true;
   }
 };

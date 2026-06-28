@@ -1,3 +1,4 @@
+// App.js
 import { FontAwesome } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NavigationContainer } from "@react-navigation/native";
@@ -324,6 +325,7 @@ export default function App() {
                   timeout: 10000,
                 });
                 setLocationGranted(true);
+                setTimeout(() => startLocationTracking(parsedUser), 500);
               } catch {
                 setLocationGranted(false);
               }
@@ -332,6 +334,7 @@ export default function App() {
             }
           } else {
             setLocationGranted(true);
+            setTimeout(() => startLocationTracking(parsedUser), 500);
           }
         }
       } catch (err) {
