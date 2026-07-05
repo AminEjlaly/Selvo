@@ -667,23 +667,38 @@ export const saveFactor = async (factorData) => {
     }
 
     if (!res.ok) {
-      console.log('❌ خطای HTTP در ثبت فاکتور:', data);
-      
-      if (res.status === 401 || res.status === 403) {
-        await AsyncStorage.multiRemove(['token', 'user']);
-        throw new Error('احراز هویت نامعتبر، لطفاً دوباره وارد شوید');
-      }
-      
-      if (res.status === 400) {
-        throw new Error(data.message || 'داده‌های ارسالی نامعتبر است');
-      }
-      
-      if (res.status === 500) {
-        throw new Error('خطای داخلی سرور');
-      }
-      
-      throw new Error(data.message || `خطای سرور: ${res.status}`);
-    }
+  console.log('❌ خطای HTTP در ثبت فاکتور:', data);
+
+  // فقط وقتی که پیام واقعاً مربوط به توکن/احراز هویت است، توکن را پاک کن
+  const isAuthError =
+    (res.status === 401) ||
+    (res.status === 403 && (
+      data.message?.includes('توکن') ||
+      data.message?.includes('احراز هویت نامعتبر') ||
+      data.error === 'INVALID_TOKEN' ||
+      data.error === 'TOKEN_EXPIRED'
+    ));
+
+  if (isAuthError) {
+    await AsyncStorage.multiRemove(['token', 'user']);
+    throw new Error('احراز هویت نامعتبر، لطفاً دوباره وارد شوید');
+  }
+
+  // 403 های دیگر (مثل عدم اجازه فروش) فقط پیام خودشان را نشان بدهند، بدون logout
+  if (res.status === 403) {
+    throw new Error(data.message || 'دسترسی غیرمجاز');
+  }
+
+  if (res.status === 400) {
+    throw new Error(data.message || 'داده‌های ارسالی نامعتبر است');
+  }
+
+  if (res.status === 500) {
+    throw new Error('خطای داخلی سرور');
+  }
+
+  throw new Error(data.message || `خطای سرور: ${res.status}`);
+}
 
     if (!data.success) {
       console.log('❌ خطای منطقی در ثبت فاکتور:', data);
