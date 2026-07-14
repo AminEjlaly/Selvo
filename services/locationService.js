@@ -1,56 +1,159 @@
-// locationService.js
+// locationService.secure.js - نسخه ضد تقلب کامل
+// این فایل جایگزین locationService.js قبلی شما شود
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import jalaali from 'jalaali-js';
+import { NativeModules, Platform } from 'react-native';
 import { APP_CONFIG, getServerUrl } from '../config';
+
+// اگر از ماژول نیتیو یا کتابخانه آماده استفاده می‌کنید
+// import { isMockingLocation } from 'react-native-turbo-mock-location-detector';
 
 const VISITOR_INFO_KEY = 'visitor_info';
 const LOCATION_PERMISSION_KEY = 'location_permission_granted';
 const BACKGROUND_LOCATION_TASK = 'BACKGROUND_LOCATION_TASK';
-let isStarting = false; // ← lock جدید
+
+let isStarting = false;
 let locationIntervalId = null;
 let statusIntervalId = null;
 let lastSent = 0;
 let isRunning = false;
 let retryCount = 0;
-
-// ─── شماره نسخه جلسه ارسال — برای حذف race condition بین فراخوانی‌های هم‌زمان ───
 let currentSessionId = 0;
 
-// ──────────────────────────────────────────────
-// ⛔️ Background Task — غیرفعال شد
-// این تسک دیگه هیچ‌جا start نمیشه و هیچ ارسالی انجام نمیده.
-// تعریفش فقط برای این نگه داشته شده که اگه روی دستگاهی از نسخه‌های
-// قبلی برنامه از قبل توی سیستم‌عامل ثبت شده باشه، بتونیم با
-// stopBackgroundLocationTask() پیداش کنیم و متوقفش کنیم.
-// ──────────────────────────────────────────────
+// --- Constants for Anti-Mock ---
+export const MOCK_LOCATION_ERROR = 'MOCK_LOCATION_DETECTED';
+export const DEVELOPER_OPTIONS_ERROR = 'DEVELOPER_OPTIONS_ENABLED';
+export const MOCK_APP_INSTALLED_ERROR = 'MOCK_APP_INSTALLED';
+
+const KNOWN_FAKE_GPS_PACKAGES = [
+  'com.lexa.fakegps',
+  'com.incorporateapps.fakegps',
+  'com.blogspot.newapphorizons.fakegps',
+  'com.fakegps.mock',
+  'com.gsmartstudio.fakegps',
+  'com.lkr.fakegps',
+  'com.theappninjas.fakegps',
+  'com.just4funtools.fakegps',
+  'org.hola.gpslocation',
+  'com.locationchanger',
+  'com.fly.gps',
+];
+
 TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async () => {
-  return; // عمداً خالی — دیگه چیزی ارسال نمی‌کند
+  return;
 });
 
 // ──────────────────────────────────────────────
-// 🔐 درخواست مجوز
+// 🔍 تشخیص لوکیشن فیک - هسته اصلی
+// ──────────────────────────────────────────────
+
+/**
+ * مهم: در اندروید 6 به بالا، ALLOW_MOCK_LOCATION سراسری همیشه 0 است.
+ * شما نمی‌توانید *قبل* از گرفتن لوکیشن بفهمید کدام اپ به عنوان Mock انتخاب شده.
+ * فقط بعد از گرفتن لوکیشن می‌توانید بفهمید آن لوکیشن فیک است یا نه.
+ * 
+ * اما می‌توانید 2 چیز را قبل از درخواست لوکیشن چک کنید:
+ * 1. آیا Developer Options روشن است؟
+ * 2. آیا اپ فیک روی گوشی نصب است؟ (نیاز به Dev Build دارد)
+ */
+export const isLocationMocked = (locationResult) => {
+  if (!locationResult) return false;
+  
+  // expo-location از SDK 50 به بعد این فیلد را می‌دهد
+  // در Dev Build / Release Build مقدار درست دارد، در Expo Go ممکن است undefined باشد
+  if (locationResult.mocked === true) return true;
+  if (locationResult.coords?.mocked === true) return true;
+  
+  // برای ماژول نیتیو خام
+  // @ts-ignore
+  if (locationResult.mocked === 1) return true;
+
+  // Heuristic اضافی: بعضی اپ‌های فیک accuracy را 0 یا 1 می‌گذارند
+  // این را با احتیاط استفاده کنید
+  // if (locationResult.coords?.accuracy === 0) return true;
+
+  return false;
+};
+
+// بررسی Developer Options via Native Module (نیاز به Dev Build)
+export const checkDeveloperOptions = async () => {
+  try {
+    // اگر از ماژول خودتان استفاده می‌کنید
+    if (NativeModules.MockLocationDetector) {
+      const enabled = await NativeModules.MockLocationDetector.isDeveloperOptionsEnabled();
+      return enabled;
+    }
+    // fallback: در Expo Go نمی‌توانیم چک کنیم، false برمی‌گردانیم
+    return false;
+  } catch (e) {
+    console.log('checkDeveloperOptions error:', e.message);
+    return false;
+  }
+};
+
+// بررسی اینکه آیا یک اپ Mock روی دستگاه فعال است (تکنیک addTestProvider)
+// این قوی‌ترین روش برای قبل از گرفتن لوکیشن است [2](https://blog.anmolthedeveloper.com/how-to-detect-fake-gps-and-mock-location-in-android-apps-a-developers-security-guide)
+export const hasActiveMockApp = async () => {
+  try {
+    if (NativeModules.MockLocationDetector) {
+      const hasMock = await NativeModules.MockLocationDetector.hasMockLocationApp();
+      return hasMock;
+    }
+    return false;
+  } catch (e) {
+    console.log('hasActiveMockApp error:', e.message);
+    return false;
+  }
+};
+
+// بررسی کامل محیط قبل از شروع
+export const checkMockEnvironment = async () => {
+  // فقط اندروید
+  if (Platform.OS !== 'android') {
+    return { isThreat: false };
+  }
+
+  // 1. چک Developer Options
+  const devEnabled = await checkDeveloperOptions();
+  if (devEnabled) {
+    console.warn('⚠️ Developer Options روشن است');
+    // بسته به سیاست شما: می‌توانید بلاک کنید یا فقط هشدار دهید
+    // برای اپ‌های حساس مثل حضور و غیاب، بهتر است بلاک کنید
+    // return { isThreat: true, code: DEVELOPER_OPTIONS_ERROR, message: 'لطفا Developer Options را خاموش کنید' };
+  }
+
+  // 2. چک وجود اپ Mock فعال (نیاز به نیتیو)
+  const mockAppActive = await hasActiveMockApp();
+  if (mockAppActive) {
+    return { 
+      isThreat: true, 
+      code: MOCK_LOCATION_ERROR, 
+      message: 'اپلیکیشن تغییر لوکیشن فعال شناسایی شد. لطفا آن را غیرفعال کنید.' 
+    };
+  }
+
+  return { isThreat: false };
+};
+
+
+// ──────────────────────────────────────────────
+// 🔐 مجوزها
 // ──────────────────────────────────────────────
 export const requestAllPermissions = async () => {
   if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) return false;
-
   try {
     console.log('📍 درخواست مجوز foreground...');
     const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
-
     if (fgStatus !== 'granted') {
       console.log('❌ مجوز foreground رد شد');
       return { foreground: false, background: false };
     }
-
     console.log('✅ مجوز foreground تأیید شد');
-
     await AsyncStorage.setItem(LOCATION_PERMISSION_KEY, JSON.stringify({
-      foreground: true,
-      background: false
+      foreground: true, background: false
     }));
-
     return { foreground: true, background: false };
   } catch (err) {
     console.log('❌ خطا در درخواست مجوز:', err.message);
@@ -69,6 +172,13 @@ export const checkPermissionsStatus = async () => {
 };
 
 export const requestLocationPermission = async () => {
+  // --- مرحله ضد تقلب قبل از درخواست مجوز ---
+  const envCheck = await checkMockEnvironment();
+  if (envCheck.isThreat) {
+    const err = new Error(envCheck.message);
+    err.code = envCheck.code;
+    throw err;
+  }
   const result = await requestAllPermissions();
   return result?.foreground ?? false;
 };
@@ -79,72 +189,14 @@ export const checkActualPermissionStatus = async () => {
 };
 
 // ──────────────────────────────────────────────
-// 📡 ارسال لوکیشن به سرور
+// 📡 ارسال و دریافت لوکیشن امن
 // ──────────────────────────────────────────────
-export const sendVisitorLocation = async ({ VisitorCode, VisitorName, Lat, Lng }) => {
-  if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) return false;
 
-  if (!VisitorCode || VisitorCode === 'unknown') {
-    console.log('⛔ ارسال لوکیشن لغو شد — VisitorCode نامعتبر است');
-    return false;
-  }
-
-  try {
-    const baseUrl = await getServerUrl();
-    const now = new Date();
-    const { jy, jm, jd } = jalaali.toJalaali(
-      now.getFullYear(), now.getMonth() + 1, now.getDate()
-    );
-    const date = `${jy}/${String(jm).padStart(2, '0')}/${String(jd).padStart(2, '0')}`;
-    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-
-    const res = await fetch(`${baseUrl}/api/visitor/location`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ VisitorCode, VisitorName, Lat, Lng, date, time, timestamp: now.toISOString() }),
-    });
-
-    const responseText = await res.text();
-    let data;
-    try { data = JSON.parse(responseText); } catch (e) { data = null; }
-
-    if (!res.ok || !data?.success) {
-      throw new Error(data?.message || `خطای سرور: ${res.status}`);
-    }
-
-    return data;
-  } catch (err) {
-    console.log('❌ خطا در ارسال لوکیشن:', err.message);
-    throw err;
-  }
-};
-
-// ──────────────────────────────────────────────
-// ⏹ توقف/پاکسازی Background Task قدیمی
-// ──────────────────────────────────────────────
-export const stopBackgroundLocationTask = async () => {
-  try {
-    const isTaskRunning = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)
-      .catch(() => false);
-
-    if (isTaskRunning) {
-      await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-      console.log('✅ Background task قدیمی پیدا و متوقف شد');
-    }
-  } catch (err) {
-    console.log('❌ خطا در توقف background task:', err.message);
-  }
-};
-
-// ──────────────────────────────────────────────
-// 🔄 ارسال خودکار (فقط Foreground — هر دقیقه)
-// ──────────────────────────────────────────────
 export const getCurrentPosition = async (options = {}) => {
   if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) return null;
   try {
     const { foreground } = await checkPermissionsStatus();
     if (!foreground) throw new Error('PERMISSION_DENIED');
-
     return await Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.Balanced,
       timeout: 15000,
@@ -157,10 +209,78 @@ export const getCurrentPosition = async (options = {}) => {
   }
 };
 
+// نسخه امن - این را به جای getCurrentPosition در همه جا استفاده کنید
+export const getCurrentPositionSecure = async (options = {}) => {
+  // چک محیط قبل از گرفتن لوکیشن
+  const envCheck = await checkMockEnvironment();
+  if (envCheck.isThreat) {
+    const err = new Error(envCheck.message);
+    err.code = envCheck.code;
+    throw err;
+  }
+
+  const location = await getCurrentPosition(options);
+
+  // --- تشخیص اصلی mock ---
+  if (isLocationMocked(location)) {
+    console.warn('⛔ لوکیشن فیک شناسایی شد!', location);
+    const err = new Error('لوکیشن جعلی شناسایی شد. لطفا اپلیکیشن های Fake GPS را ببندید و Mock Location را از Developer Options غیرفعال کنید.');
+    err.code = MOCK_LOCATION_ERROR;
+    throw err;
+  }
+
+  return location;
+};
+
+export const sendVisitorLocation = async ({ VisitorCode, VisitorName, Lat, Lng, IsMockCheckPassed = true }) => {
+  if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) return false;
+  if (!VisitorCode || VisitorCode === 'unknown') {
+    console.log('⛔ ارسال لوکیشن لغو شد — VisitorCode نامعتبر است');
+    return false;
+  }
+  try {
+    const baseUrl = await getServerUrl();
+    const now = new Date();
+    const { jy, jm, jd } = jalaali.toJalaali(now.getFullYear(), now.getMonth() + 1, now.getDate());
+    const date = `${jy}/${String(jm).padStart(2, '0')}/${String(jd).padStart(2, '0')}`;
+    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+    const res = await fetch(`${baseUrl}/api/visitor/location`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ VisitorCode, VisitorName, Lat, Lng, date, time, timestamp: now.toISOString(), isMockCheckPassed: IsMockCheckPassed }),
+    });
+
+    const responseText = await res.text();
+    let data;
+    try { data = JSON.parse(responseText); } catch (e) { data = null; }
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.message || `خطای سرور: ${res.status}`);
+    }
+    return data;
+  } catch (err) {
+    console.log('❌ خطا در ارسال لوکیشن:', err.message);
+    throw err;
+  }
+};
+
+// ──────────────────────────────────────────────
+// 🔄 ارسال خودکار (فقط Foreground — هر دقیقه)
+// ──────────────────────────────────────────────
+export const stopBackgroundLocationTask = async () => {
+  try {
+    const isTaskRunning = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK).catch(() => false);
+    if (isTaskRunning) {
+      await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+      console.log('✅ Background task قدیمی پیدا و متوقف شد');
+    }
+  } catch (err) {
+    console.log('❌ خطا در توقف background task:', err.message);
+  }
+};
+
 export const startAutoSendLocation = async (visitorInfo, options = {}) => {
   if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) return false;
-
-  // ← اگه در حال شروع هستیم، درخواست جدید رو نادیده بگیر
   if (isStarting) {
     console.log('⏭ startAutoSendLocation در حال اجراست — نادیده گرفته شد');
     return null;
@@ -169,22 +289,17 @@ export const startAutoSendLocation = async (visitorInfo, options = {}) => {
 
   const config = {
     intervalMs: 60 * 1000,
-    minInterval: 55 * 1000,  // ← باید نزدیک به intervalMs باشه، نه 10 ثانیه
+    minInterval: 55 * 1000,
     maxRetries: 3,
     ...options
   };
   if (!visitorInfo?.VisitorCode || visitorInfo.VisitorCode === 'unknown') {
     console.log('❌ اطلاعات ویزیتور نامعتبر — ارسال شروع نشد');
+    isStarting = false;
     return null;
   }
 
-  // ─── نسخه جدید این جلسه ارسال ───
-  // هر فراخوانی، حتی اگه با فراخوانی قبلی race بشه، این عدد رو افزایش
-  // می‌دهد. هر تایمر قدیمی توی تیک بعدی خودش چک می‌کند که آیا هنوز
-  // session فعال هست یا نه و اگه نبود خودش را پاک می‌کند.
   const mySession = ++currentSessionId;
-
-  // پاکسازی فوری (synchronous) تایمر فعلی - قبل از هر await
   if (locationIntervalId) {
     clearInterval(locationIntervalId);
     locationIntervalId = null;
@@ -192,43 +307,48 @@ export const startAutoSendLocation = async (visitorInfo, options = {}) => {
   isRunning = false;
 
   await stopBackgroundLocationTask().catch(() => {});
-
   await AsyncStorage.setItem(VISITOR_INFO_KEY, JSON.stringify(visitorInfo));
 
   const { foreground } = await checkPermissionsStatus();
-  if (!foreground) throw new Error('PERMISSION_DENIED');
+  if (!foreground) {
+    isStarting = false;
+    throw new Error('PERMISSION_DENIED');
+  }
 
-  // اگه در همین فاصله یه فراخوانی جدیدتر شروع شده، این یکی رو لغو کن
   if (mySession !== currentSessionId) {
-    console.log('⏭ session جدیدتری شروع شده — این فراخوانی نادیده گرفته شد');
+    isStarting = false;
     return null;
   }
 
-  // ارسال اولیه
   try {
-    const pos = await getCurrentPosition();
+    const pos = await getCurrentPositionSecure(); // <-- استفاده از نسخه امن
     const { latitude: Lat, longitude: Lng } = pos.coords;
     await sendVisitorLocation({ ...visitorInfo, Lat, Lng });
     lastSent = Date.now();
     console.log('✅ ارسال اولیه موفق');
   } catch (error) {
     console.log('❌ خطا در ارسال اولیه:', error.message);
+    isStarting = false;
+    if (error.code === MOCK_LOCATION_ERROR || error.code === DEVELOPER_OPTIONS_ERROR) {
+      throw error; // بگذار UI آن را نمایش دهد
+    }
     if (error.message === 'PERMISSION_DENIED') throw error;
   }
 
-  if (mySession !== currentSessionId) return null;
+  if (mySession !== currentSessionId) {
+    isStarting = false;
+    return null;
+  }
 
   isRunning = true;
   retryCount = 0;
 
   const myIntervalId = setInterval(async () => {
-    // ─── اگه session عوض شده (یه startAutoSendLocation جدید اومده) خودشو پاک کن ───
     if (mySession !== currentSessionId) {
       clearInterval(myIntervalId);
       return;
     }
     if (!isRunning) return;
-
     const now = Date.now();
     if (now - lastSent < config.minInterval) return;
 
@@ -236,25 +356,31 @@ export const startAutoSendLocation = async (visitorInfo, options = {}) => {
       const { foreground } = await checkPermissionsStatus();
       if (!foreground) { stopAutoSendLocation(); return; }
 
-      const pos = await getCurrentPosition();
+      const pos = await getCurrentPositionSecure(); // <-- نسخه امن
       const { latitude: Lat, longitude: Lng } = pos.coords;
       await sendVisitorLocation({ ...visitorInfo, Lat, Lng });
       lastSent = Date.now();
       retryCount = 0;
     } catch (error) {
       console.log('❌ خطا در ارسال interval:', error.message);
+      if (error.code === MOCK_LOCATION_ERROR) {
+        // اگر فیک بود، کل سیستم را متوقف کن و به کاربر اطلاع بده
+        console.log('⛔ توقف خودکار به دلیل لوکیشن فیک');
+        stopAutoSendLocation();
+        // می‌توانید یک event emitter بفرستید تا UI هشدار دهد
+        return;
+      }
       retryCount++;
       if (retryCount >= config.maxRetries) stopAutoSendLocation();
     }
   }, config.intervalMs);
 
   locationIntervalId = myIntervalId;
-   isStarting = false;
+  isStarting = false;
   return myIntervalId;
 };
 
 export const stopAutoSendLocation = () => {
-  // ─── باطل کردن هر session فعال - تایمرهای قدیمی خودشون پاک میشن ───
   currentSessionId++;
   isRunning = false;
   if (locationIntervalId) { clearInterval(locationIntervalId); locationIntervalId = null; }
@@ -263,14 +389,13 @@ export const stopAutoSendLocation = () => {
 };
 
 export const sendSingleLocation = async (visitorInfo) => {
-  const pos = await getCurrentPosition();
+  const pos = await getCurrentPositionSecure();
   const { latitude: Lat, longitude: Lng } = pos.coords;
   await sendVisitorLocation({ ...visitorInfo, Lat, Lng });
   lastSent = Date.now();
   return true;
 };
 
-// جدید — با throttle 60 ثانیه
 export const sendQuickLocation = async (visitorInfo) => {
   const now = Date.now();
   if (now - lastSent < 60 * 1000) {
@@ -280,7 +405,7 @@ export const sendQuickLocation = async (visitorInfo) => {
   try {
     const { foreground } = await checkPermissionsStatus();
     if (!foreground) return false;
-    const pos = await Location.getCurrentPositionAsync({
+    const pos = await getCurrentPositionSecure({
       accuracy: Location.Accuracy.Lowest, timeout: 8000, maximumAge: 0
     });
     const { latitude: Lat, longitude: Lng } = pos.coords;
@@ -289,6 +414,7 @@ export const sendQuickLocation = async (visitorInfo) => {
     return true;
   } catch (error) {
     console.log('❌ خطا در ارسال سریع:', error.message);
+    if (error.code === MOCK_LOCATION_ERROR) throw error;
     return false;
   }
 };
@@ -307,19 +433,19 @@ export const getCachedPosition = async () => {
   if (!APP_CONFIG.LOCATION_TRACKING_ENABLED) return null;
   const now = Date.now();
   if (cachedPosition && (now - cacheTime) < CACHE_DURATION) return cachedPosition;
-  const position = await getCurrentPosition();
+  const position = await getCurrentPositionSecure();
   cachedPosition = position;
   cacheTime = now;
   return position;
 };
+
+// این تابع برای سرور شماست
 export const checkTrackingEnabled = async () => {
   try {
     const token = await AsyncStorage.getItem('token');
     if (!token) return true;
-
     const connectionType = await AsyncStorage.getItem('connection_type');
     let serverUrl = '';
-
     if (connectionType === 'url') {
       serverUrl = await AsyncStorage.getItem('server_url') || '';
     } else {
@@ -327,18 +453,13 @@ export const checkTrackingEnabled = async () => {
       const port = await AsyncStorage.getItem('server_port') || '';
       serverUrl = ip && port ? `http://${ip}:${port}` : '';
     }
-
     if (!serverUrl) return true;
-
     const response = await fetch(`${serverUrl}/api/location-tracking/status`, {
       headers: { 'Authorization': `Bearer ${token}` },
     });
-
     if (!response.ok) return true;
-
     const data = await response.json();
     return data?.data?.locationTrackingEnabled !== false;
-
   } catch {
     return true;
   }

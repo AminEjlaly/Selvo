@@ -1,0 +1,18 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+group = 'com.yourapp.mocklocation'
+version = '1.0.0'
+
+android {
+  namespace "com.yourapp.mocklocation"
+  compileSdkVersion 34
+  defaultConfig {
+    minSdkVersion 21
+    targetSdkVersion 34
+  }
+}
+
+dependencies {
+  implementation project(':expo-modules-core')
+}
