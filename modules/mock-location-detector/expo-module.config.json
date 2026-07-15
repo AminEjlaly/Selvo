@@ -1,1 +1,9 @@
-{ "platforms": ["android"] }
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["MockLocationDetectorModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.mocklocationdetector.MockLocationDetectorModule"]
+  }
+}

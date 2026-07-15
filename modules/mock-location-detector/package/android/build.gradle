@@ -1,7 +1,7 @@
 apply plugin: 'com.android.library'
 
-group = 'expo.modules.mocklocationdetector'
-version = ''
+group = '<%- project.package %>'
+version = '<%- project.version %>'
 
 def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
 apply from: expoModulesCorePlugin
@@ -32,10 +32,10 @@ if (useManagedAndroidSdkVersions) {
 }
 
 android {
-  namespace "expo.modules.mocklocationdetector"
+  namespace "<%- project.package %>"
   defaultConfig {
     versionCode 1
-    versionName ""
+    versionName "<%- project.version %>"
   }
   lintOptions {
     abortOnError false

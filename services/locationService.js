@@ -4,8 +4,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import jalaali from 'jalaali-js';
-import { NativeModules, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { APP_CONFIG, getServerUrl } from '../config';
+import MockLocationDetector from '../modules/mock-location-detector';
 
 // اگر از ماژول نیتیو یا کتابخانه آماده استفاده می‌کنید
 // import { isMockingLocation } from 'react-native-turbo-mock-location-detector';
@@ -77,37 +78,23 @@ export const isLocationMocked = (locationResult) => {
   return false;
 };
 
-// بررسی Developer Options via Native Module (نیاز به Dev Build)
 export const checkDeveloperOptions = async () => {
   try {
-    // اگر از ماژول خودتان استفاده می‌کنید
-    if (NativeModules.MockLocationDetector) {
-      const enabled = await NativeModules.MockLocationDetector.isDeveloperOptionsEnabled();
-      return enabled;
-    }
-    // fallback: در Expo Go نمی‌توانیم چک کنیم، false برمی‌گردانیم
-    return false;
+    return await MockLocationDetector.isDeveloperOptionsEnabled();
   } catch (e) {
     console.log('checkDeveloperOptions error:', e.message);
     return false;
   }
 };
 
-// بررسی اینکه آیا یک اپ Mock روی دستگاه فعال است (تکنیک addTestProvider)
-// این قوی‌ترین روش برای قبل از گرفتن لوکیشن است [2](https://blog.anmolthedeveloper.com/how-to-detect-fake-gps-and-mock-location-in-android-apps-a-developers-security-guide)
 export const hasActiveMockApp = async () => {
   try {
-    if (NativeModules.MockLocationDetector) {
-      const hasMock = await NativeModules.MockLocationDetector.hasMockLocationApp();
-      return hasMock;
-    }
-    return false;
+    return await MockLocationDetector.hasMockLocationApp();
   } catch (e) {
     console.log('hasActiveMockApp error:', e.message);
     return false;
   }
 };
-
 // بررسی کامل محیط قبل از شروع
 export const checkMockEnvironment = async () => {
   // فقط اندروید
