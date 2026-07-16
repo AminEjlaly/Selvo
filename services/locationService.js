@@ -106,9 +106,11 @@ export const checkMockEnvironment = async () => {
   const devEnabled = await checkDeveloperOptions();
   if (devEnabled) {
     console.warn('⚠️ Developer Options روشن است');
-    // بسته به سیاست شما: می‌توانید بلاک کنید یا فقط هشدار دهید
-    // برای اپ‌های حساس مثل حضور و غیاب، بهتر است بلاک کنید
-    // return { isThreat: true, code: DEVELOPER_OPTIONS_ERROR, message: 'لطفا Developer Options را خاموش کنید' };
+    return {
+      isThreat: true,
+      code: DEVELOPER_OPTIONS_ERROR,
+      message: 'گزینه‌های توسعه‌دهنده (Developer Options) روی دستگاه شما فعال است. لطفا آن را از تنظیمات خاموش کنید.'
+    };
   }
 
   // 2. چک وجود اپ Mock فعال (نیاز به نیتیو)

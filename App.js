@@ -24,6 +24,7 @@ import { checkTrackingEnabled, startAutoSendLocation, stopAutoSendLocation } fro
 import { initSocket } from "./socket";
 // صفحات
 import SideMenu from "./components/MenuItems";
+import MockLocationGate from './components/MockLocationGate';
 import BuyerListScreen from "./screens/BuyerListScreen";
 import CartScreen from "./screens/CartScreen";
 import ChatScreen from "./screens/ChatScreen";
@@ -558,8 +559,7 @@ useEffect(() => {
       console.warn("⚠️ Logout warning:", err.message);
     }
   };
-
-  // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
   // Loading
   // ─────────────────────────────────────────────
   if (loading || !fontsLoaded) {
@@ -579,7 +579,7 @@ useEffect(() => {
   }
 
   // ─────────────────────────────────────────────
-  // 🔐 Gate
+  // 🔐 Gate مجوز لوکیشن
   // ─────────────────────────────────────────────
   if (isLoggedIn && userType === "seller" && !locationGranted) {
     return (
@@ -592,87 +592,95 @@ useEffect(() => {
   // ─────────────────────────────────────────────
   // اپ اصلی
   // ─────────────────────────────────────────────
+  const mainApp = (
+    <NavigationContainer
+      ref={navigationRef}
+      onStateChange={() => {
+        const route = getCurrentRoute();
+        setCurrentRouteName(route?.name || "");
+      }}
+    >
+      <View style={styles.container}>
+        <StatusBar
+          barStyle={isLoggedIn ? "dark-content" : "light-content"}
+          backgroundColor="transparent"
+          translucent
+        />
+        <Stack.Navigator
+          screenOptions={({ navigation, route }) => ({
+            headerStyle: { backgroundColor: "#0622a3ff", elevation: 0, shadowOpacity: 0 },
+            headerTintColor: "#fff",
+            headerTitleStyle: { fontFamily: "IRANYekan", fontSize: 15 },
+            headerTitleAlign: "center",
+            headerRight: () =>
+              route.name !== "Home" && <HomeHeaderButton navigation={navigation} />,
+          })}
+        >
+          {isLoggedIn ? (
+            <>
+              <Stack.Screen name="Home" options={{ headerShown: false }}>
+                {(props) => (
+                  <HomeScreen
+                    {...props}
+                    route={{
+                      ...props.route,
+                      params: { ...props.route.params, onLogout: handleLogout, userType, buyerCode },
+                    }}
+                  />
+                )}
+              </Stack.Screen>
+              <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: "پروفایل" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="Cart" component={CartScreen} options={{ title: "سبد خرید" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="ProductGroups" component={ProductGroupsScreen} options={{ title: "گروه کالاها" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="ProductList" component={ProductListScreen} options={{ title: "کالاها" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="Search" component={ProductListScreen} options={{ title: "جستجو" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="Report" component={ReportScreen} options={{ title: "گزارش فاکتورها" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="BuyerList" component={BuyerListScreen} options={{ title: "لیست مشتری‌ها" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="CustomerRegistration" component={CustomerRegistration} options={{ title: "تعریف مشتری جدید" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="MapBuyer" component={MapBuyerScreen} options={{ title: "نقشه مشتری‌ها" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="Invoices" component={InvoicesScreen} options={{ title: "فاکتورها" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="EditInvoice" component={EditInvoiceScreen} options={{ title: "ویرایش فاکتور", headerRight: null }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="OrderReport" component={OrderReportScreen} options={{ title: "گزارش سفارشات" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="Chat" component={ChatScreen} options={{ title: "پیام رسانی" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="SellerPerformance" component={SellerPerformanceScreen} options={{ title: "عملکرد فروشنده" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="CustomerRequests" component={CustomerRequestsScreen} options={{ title: "درخواست‌های من" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="DeliveryOrdersScreen" component={DeliveryOrdersScreen} options={{ title: "خروجی کالا" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="MapDeliveri" component={MapDeliveriScreen} options={{ title: "نقشه تحویل" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="InvoiceItems" component={InvoiceItemsScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="ManagerRozMasir" component={ManagerRozMasirScreen} options={{ title: "مدیریت روزمسیر" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="LearnChatBot" component={LearnChatBot} options={{ title: "آموزش اپلیکیشن" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="ManagerVisitorOrders" component={ManagerVisitorOrdersScreen} options={{ title: 'گزارش سفارشات ویزیتورها' }} />
+              <Stack.Screen name="PendingFactorPish" component={PendingFactorPishScreen} options={{ headerShown: false }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="FactorPishDetail" component={FactorPishDetailScreen} options={{ headerShown: false }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="CustomerPayment" component={CustomerPaymentScreen} options={{ headerShown: false }} initialParams={{ userType, buyerCode }} />
+            </>
+          ) : (
+            <Stack.Screen name="LoginScreen" options={{ headerShown: false }}>
+              {(props) => <LoginScreen {...props} onLoginSuccess={handleLoginSuccess} />}
+            </Stack.Screen>
+          )}
+        </Stack.Navigator>
+
+        {isLoggedIn && currentRouteName !== "EditInvoice" && (
+          <SideMenu
+            isOpen={menuOpen}
+            onClose={() => setMenuOpen(false)}
+            user={user}
+            onLogout={handleLogout}
+          />
+        )}
+      </View>
+    </NavigationContainer>
+  );
+
   return (
     <AppErrorBoundary>
       <CartProvider>
-        <NavigationContainer
-          ref={navigationRef}
-          onStateChange={() => {
-            const route = getCurrentRoute();
-            setCurrentRouteName(route?.name || "");
-          }}
-        >
-          <View style={styles.container}>
-            <StatusBar
-              barStyle={isLoggedIn ? "dark-content" : "light-content"}
-              backgroundColor="transparent"
-              translucent
-            />
-            <Stack.Navigator
-              screenOptions={({ navigation, route }) => ({
-                headerStyle: { backgroundColor: "#0622a3ff", elevation: 0, shadowOpacity: 0 },
-                headerTintColor: "#fff",
-                headerTitleStyle: { fontFamily: "IRANYekan", fontSize: 15 },
-                headerTitleAlign: "center",
-                headerRight: () =>
-                  route.name !== "Home" && <HomeHeaderButton navigation={navigation} />,
-              })}
-            >
-              {isLoggedIn ? (
-                <>
-                  <Stack.Screen name="Home" options={{ headerShown: false }}>
-                    {(props) => (
-                      <HomeScreen
-                        {...props}
-                        route={{
-                          ...props.route,
-                          params: { ...props.route.params, onLogout: handleLogout, userType, buyerCode },
-                        }}
-                      />
-                    )}
-                  </Stack.Screen>
-                  <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: "پروفایل" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="Cart" component={CartScreen} options={{ title: "سبد خرید" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="ProductGroups" component={ProductGroupsScreen} options={{ title: "گروه کالاها" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="ProductList" component={ProductListScreen} options={{ title: "کالاها" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="Search" component={ProductListScreen} options={{ title: "جستجو" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="Report" component={ReportScreen} options={{ title: "گزارش فاکتورها" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="BuyerList" component={BuyerListScreen} options={{ title: "لیست مشتری‌ها" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="CustomerRegistration" component={CustomerRegistration} options={{ title: "تعریف مشتری جدید" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="MapBuyer" component={MapBuyerScreen} options={{ title: "نقشه مشتری‌ها" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="Invoices" component={InvoicesScreen} options={{ title: "فاکتورها" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="EditInvoice" component={EditInvoiceScreen} options={{ title: "ویرایش فاکتور", headerRight: null }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="OrderReport" component={OrderReportScreen} options={{ title: "گزارش سفارشات" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="Chat" component={ChatScreen} options={{ title: "پیام رسانی" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="SellerPerformance" component={SellerPerformanceScreen} options={{ title: "عملکرد فروشنده" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="CustomerRequests" component={CustomerRequestsScreen} options={{ title: "درخواست‌های من" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="DeliveryOrdersScreen" component={DeliveryOrdersScreen} options={{ title: "خروجی کالا" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="MapDeliveri" component={MapDeliveriScreen} options={{ title: "نقشه تحویل" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="InvoiceItems" component={InvoiceItemsScreen} options={{ headerShown: false }} />
-                  <Stack.Screen name="ManagerRozMasir" component={ManagerRozMasirScreen} options={{ title: "مدیریت روزمسیر" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="LearnChatBot" component={LearnChatBot} options={{ title: "آموزش اپلیکیشن" }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="ManagerVisitorOrders" component={ManagerVisitorOrdersScreen} options={{ title: 'گزارش سفارشات ویزیتورها' }} />
-                  <Stack.Screen name="PendingFactorPish" component={PendingFactorPishScreen} options={{ headerShown: false }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="FactorPishDetail" component={FactorPishDetailScreen} options={{ headerShown: false }} initialParams={{ userType, buyerCode }} />
-                  <Stack.Screen name="CustomerPayment" component={CustomerPaymentScreen} options={{ headerShown: false }} initialParams={{ userType, buyerCode }} />
-                </>
-              ) : (
-                <Stack.Screen name="LoginScreen" options={{ headerShown: false }}>
-                  {(props) => <LoginScreen {...props} onLoginSuccess={handleLoginSuccess} />}
-                </Stack.Screen>
-              )}
-            </Stack.Navigator>
-
-            {isLoggedIn && currentRouteName !== "EditInvoice" && (
-              <SideMenu
-                isOpen={menuOpen}
-                onClose={() => setMenuOpen(false)}
-                user={user}
-                onLogout={handleLogout}
-              />
-            )}
-          </View>
-        </NavigationContainer>
+        {isLoggedIn && userType === "seller" ? (
+          <MockLocationGate>{mainApp}</MockLocationGate>
+        ) : (
+          mainApp
+        )}
       </CartProvider>
     </AppErrorBoundary>
   );
