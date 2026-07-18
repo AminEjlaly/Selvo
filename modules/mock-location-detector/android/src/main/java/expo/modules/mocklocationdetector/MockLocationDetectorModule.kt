@@ -13,7 +13,10 @@ class MockLocationDetectorModule : Module() {
 
     AsyncFunction("isDeveloperOptionsEnabled") {
       try {
-        val enabled = Settings.Secure.getInt(
+        // ⚠️ DEVELOPMENT_SETTINGS_ENABLED در جدول Settings.Global ذخیره می‌شود، نه Settings.Secure.
+        // استفاده از Settings.Secure.getInt با این کلید باعث SettingNotFoundException می‌شود
+        // و در catch همیشه false برمی‌گشت (باگ اصلی).
+        val enabled = Settings.Global.getInt(
           appContext.reactContext?.contentResolver,
           Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0
         )
