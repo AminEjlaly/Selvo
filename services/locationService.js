@@ -4,9 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import jalaali from 'jalaali-js';
-import { Platform } from 'react-native';
 import { APP_CONFIG, getServerUrl } from '../config';
-import MockLocationDetector from '../modules/mock-location-detector';
+
 
 // اگر از ماژول نیتیو یا کتابخانه آماده استفاده می‌کنید
 // import { isMockingLocation } from 'react-native-turbo-mock-location-detector';
@@ -78,53 +77,53 @@ export const isLocationMocked = (locationResult) => {
   return false;
 };
 
-export const checkDeveloperOptions = async () => {
-  try {
-    return await MockLocationDetector.isDeveloperOptionsEnabled();
-  } catch (e) {
-    console.log('checkDeveloperOptions error:', e.message);
-    return false;
-  }
-};
+// export const checkDeveloperOptions = async () => {
+//   try {
+//     return await MockLocationDetector.isDeveloperOptionsEnabled();
+//   } catch (e) {
+//     console.log('checkDeveloperOptions error:', e.message);
+//     return false;
+//   }
+// };
 
-export const hasActiveMockApp = async () => {
-  try {
-    return await MockLocationDetector.hasMockLocationApp();
-  } catch (e) {
-    console.log('hasActiveMockApp error:', e.message);
-    return false;
-  }
-};
-// بررسی کامل محیط قبل از شروع
-export const checkMockEnvironment = async () => {
-  // فقط اندروید
-  if (Platform.OS !== 'android') {
-    return { isThreat: false };
-  }
+// export const hasActiveMockApp = async () => {
+//   try {
+//     return await MockLocationDetector.hasMockLocationApp();
+//   } catch (e) {
+//     console.log('hasActiveMockApp error:', e.message);
+//     return false;
+//   }
+// };
+// // بررسی کامل محیط قبل از شروع
+// export const checkMockEnvironment = async () => {
+//   // فقط اندروید
+//   if (Platform.OS !== 'android') {
+//     return { isThreat: false };
+//   }
 
-  // 1. چک Developer Options
-  const devEnabled = await checkDeveloperOptions();
-  if (devEnabled) {
-    console.warn('⚠️ Developer Options روشن است');
-    return {
-      isThreat: true,
-      code: DEVELOPER_OPTIONS_ERROR,
-      message: 'گزینه‌های توسعه‌دهنده (Developer Options) روی دستگاه شما فعال است. لطفا آن را از تنظیمات خاموش کنید.'
-    };
-  }
+//   // 1. چک Developer Options
+//   const devEnabled = await checkDeveloperOptions();
+//   if (devEnabled) {
+//     console.warn('⚠️ Developer Options روشن است');
+//     return {
+//       isThreat: true,
+//       code: DEVELOPER_OPTIONS_ERROR,
+//       message: 'گزینه‌های توسعه‌دهنده (Developer Options) روی دستگاه شما فعال است. لطفا آن را از تنظیمات خاموش کنید.'
+//     };
+//   }
 
-  // 2. چک وجود اپ Mock فعال (نیاز به نیتیو)
-  const mockAppActive = await hasActiveMockApp();
-  if (mockAppActive) {
-    return { 
-      isThreat: true, 
-      code: MOCK_LOCATION_ERROR, 
-      message: 'اپلیکیشن تغییر لوکیشن فعال شناسایی شد. لطفا آن را غیرفعال کنید.' 
-    };
-  }
+//   // 2. چک وجود اپ Mock فعال (نیاز به نیتیو)
+//   const mockAppActive = await hasActiveMockApp();
+//   if (mockAppActive) {
+//     return { 
+//       isThreat: true, 
+//       code: MOCK_LOCATION_ERROR, 
+//       message: 'اپلیکیشن تغییر لوکیشن فعال شناسایی شد. لطفا آن را غیرفعال کنید.' 
+//     };
+//   }
 
-  return { isThreat: false };
-};
+//   return { isThreat: false };
+// };
 
 
 // ──────────────────────────────────────────────

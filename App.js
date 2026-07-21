@@ -24,7 +24,6 @@ import { checkTrackingEnabled, startAutoSendLocation, stopAutoSendLocation } fro
 import { initSocket } from "./socket";
 // صفحات
 import SideMenu from "./components/MenuItems";
-import MockLocationGate from './components/MockLocationGate';
 import BuyerListScreen from "./screens/BuyerListScreen";
 import CartScreen from "./screens/CartScreen";
 import ChatScreen from "./screens/ChatScreen";
@@ -55,9 +54,6 @@ import {
   emitUserOnline
 } from './socket';
 import styles from "./styles/App.styles";
-
-// 🐛 دیباگ موقت Mock Location — بعد از حل مشکل این خط و کامپوننت DebugMockButton پایین رو حذف کن
-import { debugMockCheck } from './debug-mock-check';
 
 // ─── import سرویس لوکیشن ───
 
@@ -273,31 +269,6 @@ const HomeHeaderButton = ({ navigation }) => (
     activeOpacity={0.7}
   >
     <FontAwesome name="home" size={20} color="#fff" />
-  </TouchableOpacity>
-);
-
-// ─────────────────────────────────────────────────────────
-// 🐛 دکمه شناور دیباگ Mock Location (فقط برای تست - بعد از حل مشکل حذف شود)
-// ─────────────────────────────────────────────────────────
-const DebugMockButton = () => (
-  <TouchableOpacity
-    onPress={debugMockCheck}
-    style={{
-      position: 'absolute',
-      bottom: 40,
-      right: 20,
-      backgroundColor: '#ff0000',
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      justifyContent: 'center',
-      alignItems: 'center',
-      zIndex: 9999,
-      elevation: 10,
-    }}
-    activeOpacity={0.7}
-  >
-    <Text style={{ color: '#fff', fontSize: 20 }}>🐛</Text>
   </TouchableOpacity>
 );
 
@@ -704,13 +675,7 @@ useEffect(() => {
   return (
     <AppErrorBoundary>
       <CartProvider>
-        {isLoggedIn && userType === "seller" ? (
-          <MockLocationGate>{mainApp}</MockLocationGate>
-        ) : (
-          mainApp
-        )}
-        {/* 🐛 دکمه موقت دیباگ - بعد از حل مشکل حذف شود */}
-        <DebugMockButton />
+       {mainApp}
       </CartProvider>
     </AppErrorBoundary>
   );

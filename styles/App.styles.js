@@ -1,3 +1,4 @@
+//etyles/app.styles.js
 import { Dimensions, StyleSheet } from "react-native";
 const { width } = Dimensions.get("window");
 
