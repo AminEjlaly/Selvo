@@ -3041,56 +3041,107 @@ export const getVisitorLocations = async (visitorCode, date) => {
   }
 };
 //_________________________________________________________________________________visitor location for buss end
+// api.js - نسخه نهایی و سازگار با هر دو پلتفرم
 export const uploadCustomerPhotos = async (buyerCode, photoUris, deviceInfo = '') => {
   try {
     const token = await AsyncStorage.getItem('token');
     const baseUrl = await getServerUrl();
     
-    const formData = new FormData();
-    formData.append('buyerCode', buyerCode);
+    // تشخیص پلتفرم
+    const isWeb = typeof window !== 'undefined' && window.document;
     
-    // ارسال اطلاعات دستگاه
+    const formData = new FormData();
+    formData.append('buyerCode', String(buyerCode));
+    
     if (deviceInfo) {
       formData.append('deviceInfo', deviceInfo);
     }
 
-    // اضافه کردن عکس‌ها
-    photoUris.forEach((uri, i) => {
-      const ext = uri.split('.').pop().toLowerCase() || 'jpg';
-      formData.append('photos', {
-        uri,
-        type: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
-        name: `photo_${i}.${ext}`
-      });
-    });
+    for (let i = 0; i < photoUris.length; i++) {
+      const uri = photoUris[i];
+      
+      if (isWeb) {
+        // ========== وب ==========
+        // اگر uri با data: شروع می‌شود (base64)
+        if (uri.startsWith('data:')) {
+          const blob = dataURItoBlob(uri);
+          const mimeType = blob.type || 'image/jpeg';
+          const ext = mimeType.split('/')[1] || 'jpg';
+          const file = new File([blob], `photo_${i}.${ext}`, { type: mimeType });
+          formData.append('photos', file);
+        } else {
+          // آدرس معمولی
+          const response = await fetch(uri);
+          const blob = await response.blob();
+          const mimeType = blob.type || 'image/jpeg';
+          const ext = mimeType.split('/')[1] || 'jpg';
+          const file = new File([blob], `photo_${i}.${ext}`, { type: mimeType });
+          formData.append('photos', file);
+        }
+      } else {
+        // ========== اندروید / موبایل ==========
+        const ext = uri.split('.').pop().toLowerCase() || 'jpg';
+        formData.append('photos', {
+          uri: uri,
+          type: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+          name: `photo_${i}.${ext}`
+        });
+      }
+    }
 
+    // ارسال درخواست (سازگار با هر دو پلتفرم)
     const response = await fetch(`${baseUrl}/api/customers/photos`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
+        // 🔥 مهم: Content-Type را تنظیم نکنید
       },
       body: formData,
     });
 
-    let data;
-    try {
-      data = await response.json();
-    } catch {
-      throw new Error('پاسخ سرور نامعتبر است');
-    }
+    const data = await response.json();
 
     if (!response.ok || !data.success) {
       throw new Error(data.message || 'خطا در آپلود عکس‌ها');
     }
 
     return data;
+
   } catch (err) {
+    console.error('❌ خطا در آپلود عکس:', err);
     if (err.message === 'Network request failed') {
       throw new Error('ارتباط با سرور برقرار نشد');
     }
     throw err;
   }
 };
+
+// تابع کمکی برای وب (تبدیل data URI به Blob)
+function dataURItoBlob(dataURI) {
+  try {
+    const parts = dataURI.split(',');
+    if (parts.length < 2) {
+      throw new Error('Invalid data URI format');
+    }
+    
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+    
+    const byteString = atob(parts[1]);
+    const arrayBuffer = new ArrayBuffer(byteString.length);
+    const uint8Array = new Uint8Array(arrayBuffer);
+    
+    for (let i = 0; i < byteString.length; i++) {
+      uint8Array[i] = byteString.charCodeAt(i);
+    }
+    
+    return new Blob([arrayBuffer], { type: mimeType });
+  } catch (error) {
+    console.error('❌ خطا در تبدیل data URI:', error);
+    throw error;
+  }
+}
+
 // ============================================
 // 📌 توابع جدید برای انتخاب شهر و مشتری
 // ============================================

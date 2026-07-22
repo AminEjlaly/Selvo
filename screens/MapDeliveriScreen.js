@@ -1,12 +1,48 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Dimensions, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { getServerUrl } from '../config';
 
 const { width, height } = Dimensions.get('window');
+
+// ─── کامپوننت جایگزین WebView برای وب ────────────────────────────────────────
+const WebMapIframe = forwardRef(({ html, onMessage }, ref) => {
+  const iframeRef = useRef(null);
+  const onMessageRef = useRef(onMessage);
+  onMessageRef.current = onMessage;
+
+  useImperativeHandle(ref, () => ({
+    postMessage: (msg) => {
+      if (iframeRef.current && iframeRef.current.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(msg, '*');
+      }
+    }
+  }));
+
+  useEffect(() => {
+    const handler = (event) => {
+      if (onMessageRef.current) {
+        onMessageRef.current({ nativeEvent: { data: event.data } });
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  if (!html) return null;
+
+  return (
+    <iframe
+      ref={iframeRef}
+      srcDoc={html}
+      style={{ width: '100%', height: '100%', border: 'none' }}
+      sandbox="allow-scripts allow-same-origin"
+    />
+  );
+});
 
 export default function MapDeliveryScreen({ route }) {
   const filterExit = route?.params?.filterExit || null;
@@ -344,12 +380,14 @@ export default function MapDeliveryScreen({ route }) {
 
               // ✅ تابع مسیریابی
               window.navigateTo = function(lat, lng) {
-                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                  var msg = JSON.stringify({
                       type: 'navigate',
                       lat: lat,
                       lng: lng,
                       url: \`https://www.google.com/maps/dir/?api=1&destination=\${lat},\${lng}&travelmode=driving\`
-                  }));
+                  });
+                  try { window.ReactNativeWebView.postMessage(msg); } catch(e) {}
+                  try { window.parent.postMessage(msg, '*'); } catch(e) {}
               };
 
               // ✅ نمایش مسیر بهینه
@@ -424,7 +462,7 @@ export default function MapDeliveryScreen({ route }) {
               };
 
               // ✅ هندلر پیام‌های React Native
-              document.addEventListener("message", (event) => {
+              function handleMessage(event) {
                   try {
                       const data = JSON.parse(event.data);
                       if (data.type === 'focusUser' && userMarker) {
@@ -438,7 +476,9 @@ export default function MapDeliveryScreen({ route }) {
                   } catch (err) {
                       console.error('❌ خطا در پردازش پیام:', err);
                   }
-              });
+              }
+              document.addEventListener("message", handleMessage);
+              window.addEventListener("message", handleMessage);
           </script>
       </body>
       </html>
@@ -512,19 +552,25 @@ export default function MapDeliveryScreen({ route }) {
 
   return (
     <View style={styles.container}>
-      <WebView
-        ref={webRef}
-        originWhitelist={['*']}
-        javaScriptEnabled={true}
-        domStorageEnabled={true}
-        mixedContentMode="compatibility"
-        onMessage={onMessage}
-        onError={(syntheticEvent) => {
-          console.error('❌ WebView Error:', syntheticEvent.nativeEvent);
-        }}
-        source={{ html: getMapHtml(), baseUrl: '' }}
-        style={styles.webview}
-      />
+      {Platform.OS === 'web' ? (
+        <View style={styles.webview}>
+          <WebMapIframe ref={webRef} html={getMapHtml()} onMessage={onMessage} />
+        </View>
+      ) : (
+        <WebView
+          ref={webRef}
+          originWhitelist={['*']}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          mixedContentMode="compatibility"
+          onMessage={onMessage}
+          onError={(syntheticEvent) => {
+            console.error('❌ WebView Error:', syntheticEvent.nativeEvent);
+          }}
+          source={{ html: getMapHtml(), baseUrl: '' }}
+          style={styles.webview}
+        />
+      )}
 
       <TouchableOpacity onPress={focusOnUser} style={[styles.fabButton, styles.fabUser]} activeOpacity={0.8}>
         <Ionicons name="locate" size={20} color="#FFFFFF" />

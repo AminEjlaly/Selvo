@@ -123,7 +123,7 @@ export const checkVisitorProximity = async (buyer, maxDistance = 50) => {
       enabled: settings.proximityCheckEnabled,
       maxDistance: settings.maxDistance
     });
-    
+    const effectiveMaxDistance = settings.maxDistance || maxDistance;
     // در فایل proximityCheckService.js، تابع checkVisitorProximity را پیدا کنید
     if (!settings.proximityCheckEnabled) {
       console.log('✅ چک نزدیکی غیرفعال است - همه درخواست‌ها مجاز');
@@ -153,8 +153,7 @@ export const checkVisitorProximity = async (buyer, maxDistance = 50) => {
     // اگر رسید اینجا یعنی چک فعاله، ادامه بده...
     console.log('🔍 چک نزدیکی فعال است، شروع بررسی...');
     
-    // استفاده از maxDistance از سرور
-    const effectiveMaxDistance = settings.maxDistance || maxDistance;
+   
     console.log(`📏 حداکثر فاصله مجاز: ${effectiveMaxDistance} متر`);
     
     // بررسی وجود لوکیشن مشتری

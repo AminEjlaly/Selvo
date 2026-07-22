@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import { useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
   Linking,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -107,7 +108,9 @@ function buildMapHtml({ buyers, userLocation, userLocationCoords, maxDistance, p
   'use strict';
 
   function rnPost(obj) {
-    try { window.ReactNativeWebView.postMessage(JSON.stringify(obj)); } catch(e) {}
+    var str = JSON.stringify(obj);
+    try { window.ReactNativeWebView.postMessage(str); } catch(e) {}
+    try { window.parent.postMessage(str, '*'); } catch(e) {}
   }
 
   rnPost({ type: 'webViewReady' });
@@ -420,6 +423,42 @@ function buildMapHtml({ buyers, userLocation, userLocationCoords, maxDistance, p
 </body>
 </html>`;
 }
+
+// ─── کامپوننت جایگزین WebView برای وب ────────────────────────────────────────
+const WebMapIframe = forwardRef(({ html, onMessage }, ref) => {
+  const iframeRef = useRef(null);
+  const onMessageRef = useRef(onMessage);
+  onMessageRef.current = onMessage;
+
+  useImperativeHandle(ref, () => ({
+    postMessage: (msg) => {
+      if (iframeRef.current && iframeRef.current.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(msg, '*');
+      }
+    }
+  }));
+
+  useEffect(() => {
+    const handler = (event) => {
+      if (onMessageRef.current) {
+        onMessageRef.current({ nativeEvent: { data: event.data } });
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  if (!html) return null;
+
+  return (
+    <iframe
+      ref={iframeRef}
+      srcDoc={html}
+      style={{ width: '100%', height: '100%', border: 'none' }}
+      sandbox="allow-scripts allow-same-origin"
+    />
+  );
+});
 
 // ─── کامپوننت اصلی ───────────────────────────────────────────────────────────
 export default function MapBuyerScreen({ route }) {
@@ -811,17 +850,23 @@ export default function MapBuyerScreen({ route }) {
   return (
     <View style={styles.container}>
       {mapHtml ? (
-        <WebView
-          ref={webRef}
-          originWhitelist={['*']}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          mixedContentMode="always"
-          onMessage={onMessage}
-          source={{ html: mapHtml }}
-          style={styles.webview}
-          cacheEnabled={false}
-        />
+        Platform.OS === 'web' ? (
+          <View style={styles.webview}>
+            <WebMapIframe ref={webRef} html={mapHtml} onMessage={onMessage} />
+          </View>
+        ) : (
+          <WebView
+            ref={webRef}
+            originWhitelist={['*']}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            mixedContentMode="always"
+            onMessage={onMessage}
+            source={{ html: mapHtml }}
+            style={styles.webview}
+            cacheEnabled={false}
+          />
+        )
       ) : (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#0052CC" />

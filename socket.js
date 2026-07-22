@@ -120,7 +120,7 @@ const initializeSocket = async (forceNew = false) => {
     socketUrl = await getServerUrl();
 
     socket = io(socketUrl, {
-      transports: ['websocket', 'polling'],
+      transports: Platform.OS === 'web' ? ['polling', 'websocket'] : ['websocket', 'polling'],
       timeout: CONFIG.SOCKET_TIMEOUT,
       reconnection: true,
       reconnectionAttempts: CONFIG.MAX_RECONNECT_ATTEMPTS,

@@ -56,6 +56,7 @@ import {
   emitUserOnline
 } from './socket';
 import styles from "./styles/App.styles";
+import "./webScrollFix";
 
 // ─── import سرویس لوکیشن ───
 

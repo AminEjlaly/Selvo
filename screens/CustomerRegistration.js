@@ -241,30 +241,42 @@ const CustomerRegistration = ({ navigation }) => {
   };
 
   // ── ۳. انتخاب عکس از گالری ───────────────────────────────────────────────
-  const handlePickPhotos = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('خطا', 'دسترسی به گالری رد شد. لطفاً از تنظیمات دسترسی دهید.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsMultipleSelection: true,
-        quality: 0.7,
-        selectionLimit: 10,
-      });
-
-      if (!result.canceled && result.assets.length > 0) {
-        setSelectedPhotos(result.assets.map(a => a.uri));
-        setPhotoError('');
-      }
-    } catch (error) {
-      Alert.alert('خطا', 'خطا در دسترسی به گالری: ' + error.message);
+// CustomerRegistration.js - اصلاح handlePickPhotos برای وب
+const handlePickPhotos = async () => {
+  try {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('خطا', 'دسترسی به گالری رد شد.');
+      return;
     }
-  };
 
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 0.7,
+      selectionLimit: 10,
+      // 🔥 برای وب، base64 را فعال کنید
+      base64: typeof window !== 'undefined' && window.document,
+    });
+
+    if (!result.canceled && result.assets.length > 0) {
+      const isWeb = typeof window !== 'undefined' && window.document;
+      
+      const photoUris = result.assets.map(asset => {
+        // در وب از base64 استفاده کن
+        if (isWeb && asset.base64) {
+          return `data:image/jpeg;base64,${asset.base64}`;
+        }
+        return asset.uri;
+      });
+      
+      setSelectedPhotos(prev => [...prev, ...photoUris]);
+      setPhotoError('');
+    }
+  } catch (error) {
+    Alert.alert('خطا', 'خطا در دسترسی به گالری: ' + error.message);
+  }
+};
   // ── ۴. عکاسی با دوربین ───────────────────────────────────────────────────
   const handleTakePhoto = async () => {
     try {

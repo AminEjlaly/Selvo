@@ -94,9 +94,7 @@ const ensureSelvoDir = async () => {
 export const saveInvoiceToFile = async (invoice) => {
   try {
     console.log('💾 شروع ذخیره فاکتور...');
-    
-    const selvoDir = await ensureSelvoDir();
-    
+
     let customerNameForFile = 'مشتری';
     if (invoice.customer) {
       if (typeof invoice.customer === 'object' && invoice.customer.name) {
@@ -105,29 +103,47 @@ export const saveInvoiceToFile = async (invoice) => {
         customerNameForFile = invoice.customer;
       }
     }
-    
+
     const customerName = String(customerNameForFile).replace(/[/\\?%*:|"<>]/g, '-').substring(0, 30);
     const invoiceId = String(invoice.id || `inv_${Date.now()}`).replace(/[/\\?%*:|"<>]/g, '-');
-    const fileName = `فاکتور_${customerName}_${invoiceId}.json`;
-    const filePath = `${selvoDir}${fileName}`;
-    
-    const jsonData = JSON.stringify({
+
+    const invoiceData = {
       ...invoice,
       id: invoiceId,
       savedAt: new Date().toISOString(),
-      filePath: filePath
-    }, null, 2);
-    
+    };
+
+    // 🔥 روی وب: مستقیم تو AsyncStorage ذخیره کن (بدون FileSystem)
+    if (Platform.OS === 'web') {
+      const webKey = `web_invoice_${invoiceId}`;
+      await AsyncStorage.setItem(webKey, JSON.stringify(invoiceData));
+      await addToIndex(invoiceId, webKey, webKey); // filePath همون کلید AsyncStorage میشه
+
+      console.log(`✅ فاکتور (وب) در AsyncStorage ذخیره شد: ${webKey}`);
+      return {
+        success: true,
+        fileName: webKey,
+        filePath: webKey,
+        invoiceId: invoiceId,
+        message: `فاکتور ذخیره شد`
+      };
+    }
+
+    // ── مسیر عادی (اندروید/iOS) با FileSystem ──
+    const selvoDir = await ensureSelvoDir();
+    const fileName = `فاکتور_${customerName}_${invoiceId}.json`;
+    const filePath = `${selvoDir}${fileName}`;
+
+    const jsonData = JSON.stringify({ ...invoiceData, filePath }, null, 2);
+
     await FileSystem.writeAsStringAsync(filePath, jsonData, {
       encoding: FileSystem.EncodingType.UTF8
     });
-    
+
     console.log('📄 ذخیره فایل در:', filePath);
-    
     await addToIndex(invoiceId, fileName, filePath);
-    
     console.log(`✅ فاکتور ذخیره شد: ${fileName}`);
-    
+
     return {
       success: true,
       fileName: fileName,
@@ -135,7 +151,7 @@ export const saveInvoiceToFile = async (invoice) => {
       invoiceId: invoiceId,
       message: `فاکتور در پوشه Selvo ذخیره شد`
     };
-    
+
   } catch (error) {
     console.error('❌ خطا در ذخیره فاکتور:', error);
     return {
@@ -245,14 +261,24 @@ export const getAllInvoices = async () => {
     
     for (const item of index) {
       try {
-        const fileInfo = await FileSystem.getInfoAsync(item.filePath);
-        if (fileInfo.exists) {
-          const fileContent = await FileSystem.readAsStringAsync(item.filePath);
-          const invoice = JSON.parse(fileContent);
-          invoices.push(invoice);
+        if (Platform.OS === 'web') {
+          const fileContent = await AsyncStorage.getItem(item.filePath);
+          if (fileContent) {
+            const invoice = JSON.parse(fileContent);
+            invoices.push(invoice);
+          } else {
+            await removeFromIndex(item.id);
+          }
         } else {
-          console.warn(`⚠️ فایل وجود ندارد: ${item.filePath}`);
-          await removeFromIndex(item.id);
+          const fileInfo = await FileSystem.getInfoAsync(item.filePath);
+          if (fileInfo.exists) {
+            const fileContent = await FileSystem.readAsStringAsync(item.filePath);
+            const invoice = JSON.parse(fileContent);
+            invoices.push(invoice);
+          } else {
+            console.warn(`⚠️ فایل وجود ندارد: ${item.filePath}`);
+            await removeFromIndex(item.id);
+          }
         }
       } catch (error) {
         console.warn(`⚠️ خطا در خواندن فایل ${item.fileName}:`, error);
