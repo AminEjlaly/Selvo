@@ -117,7 +117,7 @@ export default StyleSheet.create({
   menuBackdrop: { flex: 1 },
   menuContainer: {
     ...defaultFont,
-    direction: "rtl",
+    writingDirection: "rtl",
     width: width * 0.85,
     backgroundColor: "#ffffff",
     elevation: 25,
@@ -127,7 +127,7 @@ export default StyleSheet.create({
     shadowRadius: 30,
   },
   menuHeader: {
-    direction: "rtl",
+    writingDirection: "rtl",
     backgroundColor: "#1e3a8a",
     paddingVertical: 24,
     paddingHorizontal: 20,

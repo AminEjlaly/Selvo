@@ -7,7 +7,7 @@ export default StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F8F9FA",
-    direction:"rtl"
+    writingDirection: "rtl"
   },
   
   center: {

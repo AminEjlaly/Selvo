@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
     marginBottom: 10 
   },
   itemText: { 
-    direction:"rtl",
+    writingDirection: "rtl",
     fontSize: 14, 
     color: '#111', 
     marginBottom: 4 

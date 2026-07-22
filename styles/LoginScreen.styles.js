@@ -1,3 +1,4 @@
+//styles/loginscreen.styles.js
 import { Dimensions, Platform, StatusBar, StyleSheet } from "react-native";
 
 const { width, height } = Dimensions.get("window");

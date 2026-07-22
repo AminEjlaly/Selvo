@@ -29,7 +29,7 @@ export const styles = StyleSheet.create({
 
   // ====== HEADER - MODERN GRADIENT ======
   header: {
-    direction: "rtl",
+    writingDirection: "rtl",
     backgroundColor: '#1e293b',
     paddingTop: Platform.OS === 'ios' ? 10 : 5,
     paddingBottom: 8,
@@ -495,7 +495,7 @@ export const styles = StyleSheet.create({
   },
 
   filePickerContainer: {
-    direction: "rtl",
+    writingDirection: "rtl",
     backgroundColor: '#1e293b',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,

@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
     fontFamily: 'IRANYekan',
     flex: 1,
     textAlign: 'left',
-    direction: 'ltr',
+    writingDirection: 'ltr',
   },
 
   // دکمه‌ها

@@ -33,13 +33,13 @@ export default StyleSheet.create({
     color: '#1e293b',
     textAlign: 'center',
     marginBottom: 4,
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
   },
   headerSubtitle: {
     fontSize: 14,
     color: '#64748b',
     textAlign: 'center',
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
   },
 
   // Filter Styles
@@ -66,7 +66,7 @@ export default StyleSheet.create({
     fontSize: 14,
     color: '#3b82f6',
     fontWeight: '500',
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
   },
   clearFilterButton: {
     padding: 12,
@@ -109,7 +109,7 @@ export default StyleSheet.create({
     color: '#1e293b',
     flex: 1,
     marginLeft: 8, // 🔥 تغییر از marginRight به marginLeft
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
     textAlign: 'right',
   },
   countBadge: {
@@ -151,7 +151,7 @@ export default StyleSheet.create({
     fontWeight: 'bold',
     color: '#1e293b',
     marginLeft: 8, // 🔥 تغییر از marginRight به marginLeft
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
     textAlign: 'right',
   },
   exitCodeBadge: {
@@ -164,7 +164,7 @@ export default StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
     fontWeight: '500',
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
   },
 
   // Order Info Styles
@@ -182,14 +182,14 @@ export default StyleSheet.create({
     fontWeight: '500',
     width: 60,
     marginRight: 8, // 🔥 تغییر از marginLeft به marginRight
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
     textAlign: 'right',
   },
   infoValue: {
     fontSize: 13,
     color: '#1e293b',
     flex: 1,
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
     textAlign: 'right',
   },
 
@@ -210,14 +210,14 @@ export default StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
     marginBottom: 2,
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
     textAlign: 'right',
   },
   amountValue: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#10b981',
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
     textAlign: 'right',
   },
   detailButton: {
@@ -236,7 +236,7 @@ export default StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     marginLeft: 4, // 🔥 تغییر از marginRight به marginLeft
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
   },
 
   // No Invoice Styles
@@ -255,7 +255,7 @@ export default StyleSheet.create({
     color: '#f59e0b',
     fontWeight: '500',
     marginLeft: 8, // 🔥 تغییر از marginRight به marginLeft
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
     textAlign: 'right',
   },
 
@@ -270,13 +270,13 @@ export default StyleSheet.create({
     fontSize: 16,
     color: '#94a3b8',
     textAlign: 'center',
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
   },
   loadingText: {
     marginTop: 12,
     fontSize: 16,
     color: '#64748b',
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
   },
 
   // Modal Styles
@@ -310,12 +310,12 @@ export default StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1e293b',
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
   },
   datePickerSubtitle: {
     fontSize: 12,
     color: '#64748b',
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
     textAlign: 'right',
     marginTop: 4,
   },
@@ -340,7 +340,7 @@ export default StyleSheet.create({
     color: '#1e293b',
     flex: 1,
     marginRight: 12, // 🔥 تغییر از marginLeft به marginRight
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
     textAlign: 'right',
   },
   dateItemTextSelected: {
@@ -368,7 +368,7 @@ export default StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1e293b',
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
   },
   detailContent: {
     padding: 20,
@@ -384,7 +384,7 @@ export default StyleSheet.create({
     paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
     textAlign: 'right',
   },
   detailRow: {
@@ -397,7 +397,7 @@ export default StyleSheet.create({
     fontSize: 14,
     color: '#64748b',
     fontWeight: '500',
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
     textAlign: 'right',
   },
   detailValue: {
@@ -407,7 +407,7 @@ export default StyleSheet.create({
     textAlign: 'right', // 🔥 تغییر به right
     flex: 1,
     marginRight: 16, // 🔥 تغییر از marginLeft به marginRight
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
   },
   detailAmount: {
     fontSize: 20,
@@ -415,7 +415,7 @@ export default StyleSheet.create({
     color: '#10b981',
     textAlign: 'center',
     marginVertical: 8,
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
   },
 
   // 🔥 استایل‌های جدید برای حالت‌های مختلف
@@ -429,7 +429,7 @@ export default StyleSheet.create({
     fontSize: 14,
     color: '#94a3b8',
     textAlign: 'center',
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
   },
   // در فایل styles/DeliveryOrdersScreen.styles.js
 
@@ -451,7 +451,7 @@ invoiceDetailsButtonText: {
   fontSize: 12,
   fontWeight: '500',
   marginLeft: 4,
-  writingDirection: 'rtl',
+  writingwritingDirection: 'rtl',
 },
 // در فایل استایل‌ها این موارد رو اضافه کن:
 
@@ -574,7 +574,7 @@ headerTotalAmount: {
     paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
     textAlign: 'right',
   },
 
@@ -604,7 +604,7 @@ headerTotalAmount: {
     fontSize: 26,
     fontWeight: '700',
     color: '#10b981',
-    writingDirection: 'rtl',
+    writingwritingDirection: 'rtl',
   },
   detailAmountLabel: {
     fontSize: 13,

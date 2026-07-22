@@ -76,7 +76,10 @@ export const isLocationMocked = (locationResult) => {
 
   return false;
 };
-
+// جایگزین بی‌خطر — چون تشخیص Mock Location native دیگر استفاده نمی‌شود
+export const checkMockEnvironment = async () => {
+  return { isThreat: false };
+};
 // export const checkDeveloperOptions = async () => {
 //   try {
 //     return await MockLocationDetector.isDeveloperOptionsEnabled();

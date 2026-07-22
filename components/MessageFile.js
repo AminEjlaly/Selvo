@@ -218,7 +218,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   fileContainer: {
-    direction: "rtl",
+    writingDirection: "rtl",
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,

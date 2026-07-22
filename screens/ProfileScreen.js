@@ -1,3 +1,4 @@
+//profilescreen.js
 import { FontAwesome5 } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from "react";
@@ -90,7 +91,7 @@ const styles = StyleSheet.create({
     flex: 1,
     ...defaultFont,
     backgroundColor: "#f8fafc",
-    direction: "rtl",
+    writingDirection: "rtl",
   },
 
   // Loading Styles
@@ -100,13 +101,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#f8fafc",
   },
-  loadingText: {
+ loadingText: {
     marginTop: 16,
     fontSize: 16,
     color: "#64748b",
     fontWeight: "500",
-    fontFamily:defaultFont,
-  },
+    ...defaultFont,   // ✅ به‌جای fontFamily: defaultFont
+},
 
   // Error Styles
   errorContainer: {
@@ -174,12 +175,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 30,
     paddingBottom: 20,
-    direction: "rtl",
+    writingDirection: "rtl",
   },
 
   // Card Styles
   card: {
-    direction: "rtl",
+    writingDirection: "rtl",
 
     flexDirection: "row",
     alignItems: "center",

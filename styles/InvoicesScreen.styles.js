@@ -5,7 +5,7 @@ export const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
-    direction:"rtl"
+    writingDirection: "rtl"
   },
   statsContainer: {
     flexDirection: 'row',

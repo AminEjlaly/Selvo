@@ -17,7 +17,7 @@ export default StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 999,
-    direction:"rtl",
+    writingDirection: "rtl",
     
   },
   menuBackdrop: {

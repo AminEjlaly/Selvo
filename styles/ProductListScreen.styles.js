@@ -22,7 +22,7 @@ const colors = {
 export default StyleSheet.create({
   container: {
     flex: 1,
-    direction: "rtl",
+    writingDirection: "rtl",
     backgroundColor: colors.background,
     fontFamily: "IRANYekan",
   },
@@ -164,7 +164,7 @@ export default StyleSheet.create({
   // لیست محصولات
   columnWrapper: {
     display: "flex",
-    direction: "rtl",
+    writingDirection: "rtl",
     gap: 12,
     marginBottom: 1,
     padding: 5,

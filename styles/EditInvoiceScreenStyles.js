@@ -7,7 +7,7 @@ export default StyleSheet.create({
     flex: 1,
     backgroundColor: "#ebedf0ff",
     padding: 16,
-    direction: "rtl",
+    writingDirection: "rtl",
     ...defaultFont
   },
   
@@ -37,7 +37,7 @@ export default StyleSheet.create({
   },
   
   card: {
-    direction: "rtl",
+    writingDirection: "rtl",
     gap: 20,
     display: "flex",
     flexDirection: "row",
@@ -70,7 +70,7 @@ export default StyleSheet.create({
     flexShrink: 1,
     alignItems: "flex-start",
     textAlign: "right",
-    direction: "rtl",
+    writingDirection: "rtl",
   },
 
   name: {
@@ -109,7 +109,7 @@ export default StyleSheet.create({
 
   totalContainer: {
     
-    direction:"rtl",
+    writingDirection: "rtl",
     padding: 16,
     backgroundColor: "#ffffff",
     borderRadius: 16,
@@ -365,7 +365,7 @@ export default StyleSheet.create({
     justifyContent: "space-between",
   },
     productRowKala: {
-    direction: "rtl",
+    writingDirection: "rtl",
     padding: 20,
     borderRadius: 16,
     marginBottom: 12,
@@ -387,7 +387,7 @@ export default StyleSheet.create({
     width: "90%",
     flexWrap: "wrap",
     flexShrink: 1,
-    direction: "rtl",
+    writingDirection: "rtl",
     alignItems: "flex-start"
   },
 

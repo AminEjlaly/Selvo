@@ -460,7 +460,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F5F7FA",
-    direction: "rtl"
+    writingDirection: "rtl"
   },
   scrollView: {
     flex: 1,
@@ -633,7 +633,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     marginBottom: 12,
-    direction: "ltr",
+    writingDirection: "ltr",
     justifyContent: "flex-start",
   },
   cardIcon: {

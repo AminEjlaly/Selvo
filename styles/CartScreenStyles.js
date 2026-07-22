@@ -7,7 +7,7 @@ export default StyleSheet.create({
     flex: 1,
     backgroundColor: "#f9fbfbff",
     padding: 8,
-    direction: "rtl",
+    writingDirection: "rtl",
     ...defaultFont
   },
   
@@ -37,7 +37,7 @@ export default StyleSheet.create({
   },
   
   card: {
-    direction: "rtl",
+    writingDirection: "rtl",
     gap: 20,
     display: "flex",
     flexDirection: "row",
@@ -70,7 +70,7 @@ export default StyleSheet.create({
     flexShrink: 1,
     alignItems: "flex-start",
     textAlign: "right",
-    direction: "rtl",
+    writingDirection: "rtl",
   },
 
   name: {
@@ -180,7 +180,7 @@ export default StyleSheet.create({
   },
 
   modalContainerBackgroundKala: {
-    direction: "rtl",
+    writingDirection: "rtl",
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.7)",
     justifyContent: "center",
@@ -331,7 +331,7 @@ export default StyleSheet.create({
   },
 
   productRowKala: {
-    direction: "rtl",
+    writingDirection: "rtl",
     padding: 20,
     borderRadius: 16,
     marginBottom: 12,
@@ -374,7 +374,7 @@ export default StyleSheet.create({
     width: "90%",
     flexWrap: "wrap",
     flexShrink: 1,
-    direction: "rtl",
+    writingDirection: "rtl",
     alignItems: "flex-start",
     fontFamily: "IRANYekan-Bold",
   },

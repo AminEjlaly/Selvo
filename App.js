@@ -13,6 +13,7 @@ import {
   Animated,
   AppState,
   Linking,
+  Platform,
   StatusBar,
   Text,
   TouchableOpacity,
@@ -22,6 +23,7 @@ import { CartProvider } from "./CartContext";
 import { getCurrentRoute, navigationRef } from "./navigationService";
 import { checkTrackingEnabled, startAutoSendLocation, stopAutoSendLocation } from './services/locationService';
 import { initSocket } from "./socket";
+import "./webPolyfills";
 // صفحات
 import SideMenu from "./components/MenuItems";
 import BuyerListScreen from "./screens/BuyerListScreen";
@@ -150,7 +152,10 @@ const LocationPermissionGate = ({ onPermissionsGranted }) => {
           "دسترسی رد شد",
           "برای استفاده از اپلیکیشن باید موقعیت را از تنظیمات دستگاه فعال کنید.",
           [
-            { text: "رفتن به تنظیمات", onPress: () => Linking.openSettings() },
+            { text: "رفتن به تنظیمات", onPress: () => {
+    if (Platform.OS !== 'web') Linking.openSettings();
+  }
+},
             { text: "بعداً", style: "cancel" },
           ]
         );
@@ -223,11 +228,11 @@ const LocationPermissionGate = ({ onPermissionsGranted }) => {
       )}
 
       <TouchableOpacity
-        onPress={
-          permStatus === "denied" || permStatus === "gps_off"
-            ? () => Linking.openSettings()
-            : handleRequest
-        }
+       onPress={
+  permStatus === "denied" || permStatus === "gps_off"
+    ? () => { if (Platform.OS !== 'web') Linking.openSettings(); }
+    : handleRequest
+}
         disabled={requesting}
         style={{
           backgroundColor: "#0622a3", paddingVertical: 16,
