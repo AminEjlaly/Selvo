@@ -104,34 +104,39 @@ const LocationPermissionGate = ({ onPermissionsGranted }) => {
     checkStatus();
   }, []);
 
-  const checkStatus = async () => {
-    setChecking(true);
-    try {
-      const { status } = await Location.getForegroundPermissionsAsync();
-      if (status !== "granted") {
-        setPermStatus("denied");
-        setChecking(false);
-        return;
-      }
+const checkStatus = async () => {
+  setChecking(true);
+  try {
+    const { status } = await Location.getForegroundPermissionsAsync();
 
-      // ─── GPS واقعی رو تست کن ───
+    if (status === "granted") {
       try {
         await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Lowest,
           timeout: 10000,
         });
-        onPermissionsGranted(); // موفق شد → باز کن
+        onPermissionsGranted();
+        return;
       } catch {
-        setPermStatus("gps_off"); // نشد → قفل بمون
+        setPermStatus("gps_off");
+        setChecking(false);
+        return;
       }
-
-    } catch (e) {
-      console.warn("⚠️ Gate check error:", e.message);
-      setPermStatus("denied");
-    } finally {
-      setChecking(false);
     }
-  };
+
+    // ⬅️ تفکیک مهم: هنوز هیچ‌وقت پرسیده نشده vs واقعاً رد شده
+    if (status === "undetermined") {
+      setPermStatus(null); // یعنی هنوز چیزی نپرسیدیم، دکمه باید بره سراغ درخواست
+    } else {
+      setPermStatus("denied"); // واقعاً رد شده (چه وب چه نیتیو)
+    }
+    setChecking(false);
+  } catch (e) {
+    console.warn("⚠️ Gate check error:", e.message);
+    setPermStatus(null);
+    setChecking(false);
+  }
+};
 
   const handleRequest = async () => {
     setRequesting(true);
@@ -229,12 +234,14 @@ const LocationPermissionGate = ({ onPermissionsGranted }) => {
       )}
 
       <TouchableOpacity
-       onPress={
-  permStatus === "denied" || permStatus === "gps_off"
-    ? () => { if (Platform.OS !== 'web') Linking.openSettings(); }
-    : handleRequest
-}
-        disabled={requesting}
+      onPress={
+    permStatus === "denied"
+      ? (Platform.OS === 'web' ? handleRequest : () => Linking.openSettings())
+      : permStatus === "gps_off"
+        ? (Platform.OS === 'web' ? handleRequest : () => Linking.openSettings())
+        : handleRequest
+  }
+  disabled={requesting}
         style={{
           backgroundColor: "#0622a3", paddingVertical: 16,
           borderRadius: 14, width: "100%", alignItems: "center",
@@ -246,13 +253,15 @@ const LocationPermissionGate = ({ onPermissionsGranted }) => {
         {requesting ? (
           <ActivityIndicator color="#fff" size="small" />
         ) : (
-          <Text style={{ color: "#fff", fontSize: 16, fontFamily: "IRANYekan-Bold" }}>
-            {permStatus === "denied"
-              ? "رفتن به تنظیمات"
-              : permStatus === "gps_off"
-                ? "روشن کردن GPS"
-                : "فعال‌سازی موقعیت"}
-          </Text>
+         <Text style={{ color: "#fff", fontSize: 16, fontFamily: "IRANYekan-Bold" }}>
+  {Platform.OS === 'web'
+    ? (permStatus === "denied" ? "تلاش مجدد برای دسترسی" : "فعال‌سازی موقعیت")
+    : permStatus === "denied"
+      ? "رفتن به تنظیمات"
+      : permStatus === "gps_off"
+        ? "روشن کردن GPS"
+        : "فعال‌سازی موقعیت"}
+</Text>
         )}
       </TouchableOpacity>
 

@@ -1,4 +1,4 @@
-// src/socket.js - FIX کامل برای مشکل Logout
+// src/socket.js - FIX کامل برای مشکل Logout + آپلود فایل روی وب
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import io from 'socket.io-client';
@@ -34,6 +34,20 @@ const getServerUrl = async () => {
     console.error('❌ خطا در دریافت آدرس سرور:', error);
     return `http://${CONFIG.DEFAULT_SERVER_IP}:${CONFIG.DEFAULT_PORT}`;
   }
+};
+
+// 🔥 تابع کمکی: تبدیل data: URI به Blob (برای وب)
+const dataURItoBlob = (dataURI) => {
+  const parts = dataURI.split(',');
+  const mimeMatch = parts[0].match(/:(.*?);/);
+  const mimeType = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+  const byteString = atob(parts[1]);
+  const arrayBuffer = new ArrayBuffer(byteString.length);
+  const uint8Array = new Uint8Array(arrayBuffer);
+  for (let i = 0; i < byteString.length; i++) {
+    uint8Array[i] = byteString.charCodeAt(i);
+  }
+  return new Blob([arrayBuffer], { type: mimeType });
 };
 
 const cleanupSocket = () => {
@@ -302,6 +316,7 @@ export const sendMessageViaAPI = async (messageData) => {
 };
 
 // در socket.js - تابع uploadFile
+// 🔥 اصلاح شده: پشتیبانی درست از وب (Blob/File) در کنار نیتیو (uri object)
 export const uploadFile = async (file, onProgress = null) => {
   try {
     console.log('🔑 دریافت توکن برای آپلود...');
@@ -320,15 +335,35 @@ export const uploadFile = async (file, onProgress = null) => {
       type: file.type,
       size: file.size,
       groupId: file.groupId,
-      senderId: file.senderId
+      senderId: file.senderId,
+      platform: Platform.OS
     });
 
     const formData = new FormData();
-    formData.append('file', {
-      uri: file.uri,
-      type: file.type || 'application/octet-stream',
-      name: file.name
-    });
+
+    // 🔥 تشخیص وب: باید یه Blob/File واقعی بسازیم، نه {uri, type, name}
+    const isWeb = Platform.OS === 'web';
+
+    if (isWeb) {
+      let blob;
+      if (file.uri.startsWith('data:')) {
+        blob = dataURItoBlob(file.uri);
+      } else {
+        // uri می‌تونه blob: یا http(s): باشه؛ هر دو با fetch قابل خوندنه
+        const resp = await fetch(file.uri);
+        blob = await resp.blob();
+      }
+      const mimeType = file.type || blob.type || 'application/octet-stream';
+      const webFile = new File([blob], file.name, { type: mimeType });
+      formData.append('file', webFile);
+    } else {
+      formData.append('file', {
+        uri: file.uri,
+        type: file.type || 'application/octet-stream',
+        name: file.name
+      });
+    }
+
     formData.append('groupId', String(file.groupId));
     formData.append('senderId', String(file.senderId));
     formData.append('senderName', String(file.senderName || 'کاربر'));

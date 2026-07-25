@@ -21,6 +21,7 @@ import {
   View
 } from 'react-native';
 import MessageFile from '../components/MessageFile';
+import { getServerUrl } from '../config';
 import { getSocketPromise, sendMessageWithSocket, uploadAndSendFile } from '../socket';
 import { styles } from '../styles/ChatScreen.styles';
 
@@ -53,15 +54,15 @@ const ChatScreen = ({ route }) => {
 
 
   // ✨ دریافت آدرس سرور
-  const getBaseUrl = async () => {
-    try {
-      const serverIp = await AsyncStorage.getItem('server_ip');
-      return `http://${serverIp}:5050`;
-    } catch (error) {
-      console.error('❌ خطا در دریافت آدرس سرور:', error);
-      return 'http://localhost:5050';
-    }
-  };
+const getBaseUrl = async () => {
+  try {
+    const url = await getServerUrl();
+    return url || 'http://localhost:5050';
+  } catch (error) {
+    console.error('❌ خطا در دریافت آدرس سرور:', error);
+    return 'http://localhost:5050';
+  }
+};
 
   // ✨ بارگذاری اطلاعات کاربر
   const loadUserData = async () => {
