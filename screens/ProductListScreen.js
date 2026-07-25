@@ -19,6 +19,7 @@ import { CartContext } from "../CartContext";
 import FullscreenImageModal from "../components/FullscreenImageModal";
 import ModalProduct from "../components/ModalProduct";
 import ProductCard from "../components/ProductCard";
+import { getServerUrl } from "../config";
 import { getCacheStatus } from '../services/productCacheService';
 import styles from "../styles/ProductListScreen.styles";
 
@@ -128,6 +129,9 @@ export default function ProductListScreen({ route, navigation }) {
   // نشان‌دهنده اینکه داده از کش اومده
   const [isFromCache, setIsFromCache] = useState(false);
 
+  // 🔥 آدرس سرور یه‌بار برای کل صفحه گرفته میشه، نه برای هر کارت جدا
+  const [serverBaseUrl, setServerBaseUrl] = useState(null);
+
   const scrollY = useRef(new Animated.Value(0)).current;
   const pullAnim = useRef(new Animated.Value(0)).current;
   const refreshAnim = useRef(new Animated.Value(0)).current;
@@ -146,6 +150,11 @@ export default function ProductListScreen({ route, navigation }) {
     ),
     uniqueProducts: cart.length,
   };
+
+  // 🔥 گرفتن آدرس سرور یه‌بار در لود صفحه
+  useEffect(() => {
+    getServerUrl().then(setServerBaseUrl).catch(() => setServerBaseUrl(null));
+  }, []);
 
   // بررسی وضعیت manfi
   useEffect(() => {
@@ -614,6 +623,7 @@ export default function ProductListScreen({ route, navigation }) {
                 isDemo={isDemoMode}
                 pricingInfo={pricingInfo}
                 cart={cart}
+                serverBaseUrl={serverBaseUrl}
               />
             )}
             numColumns={2}
@@ -628,6 +638,12 @@ export default function ProductListScreen({ route, navigation }) {
             showsVerticalScrollIndicator={false}
             onScroll={onScroll}
             scrollEventThrottle={16}
+            // 🔥 تیونینگ عملکرد FlatList
+            removeClippedSubviews={Platform.OS !== 'web'}
+            maxToRenderPerBatch={10}
+            windowSize={7}
+            initialNumToRender={8}
+            updateCellsBatchingPeriod={50}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
