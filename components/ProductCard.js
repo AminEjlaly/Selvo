@@ -1,8 +1,14 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native';
 import { getServerUrl } from '../config';
 import styles from '../styles/ProductListScreen.styles';
+
+// ==================== کش حافظه‌ای عکس‌های لود شده ====================
+// این Set بیرون از کامپوننته، یعنی بین mount/unmount های مختلف
+// (وقتی FlatList آیتم‌ها رو recycle می‌کنه) زنده می‌مونه.
+// اگه یه آدرس عکس قبلاً یه‌بار موفق لود شده باشه، دیگه لودر رو نشون نمی‌دیم
+// چون مرورگر خودش از کش HTTP (که تو نگینکس تنظیم کردیم) خیلی سریع میاره.
+const loadedImageCache = new Set();
 
 // ==================== کامپوننت badge جایزه ====================
 
@@ -28,10 +34,11 @@ function GiftBadge({ giftInfo }) {
 // ==================== کامپوننت اصلی ====================
 
 export default function ProductCard({ item, onPress, onImagePress, isDemo }) {
-  const [imageLoading, setImageLoading] = useState(true);
-  const [imageError, setImageError] = useState(false);
   const [serverBaseUrl, setServerBaseUrl] = useState(null);
   const [loadingServerUrl, setLoadingServerUrl] = useState(true);
+
+  // آدرس عکس رو یه‌بار محاسبه و نگه می‌داریم (وابسته به serverBaseUrl و item.imageUrl)
+  const correctImageUrlRef = useRef(null);
 
   useEffect(() => {
     const fetchServerUrl = async () => {
@@ -47,17 +54,6 @@ export default function ProductCard({ item, onPress, onImagePress, isDemo }) {
     fetchServerUrl();
   }, []);
 
-  const getCachedImage = async (url) => {
-    try {
-      const cached = await AsyncStorage.getItem(`img_cache_${url}`);
-      if (cached) return cached;
-      await AsyncStorage.setItem(`img_cache_${url}`, url);
-      return url;
-    } catch {
-      return url;
-    }
-  };
-
   const getCorrectImageUrl = () => {
     if (!item.imageUrl || !serverBaseUrl) return null;
     try {
@@ -70,23 +66,45 @@ export default function ProductCard({ item, onPress, onImagePress, isDemo }) {
   };
 
   const correctImageUrl = getCorrectImageUrl();
+  correctImageUrlRef.current = correctImageUrl;
+
+  // 🔥 اگه این عکس قبلاً یه‌بار لود شده، از همون اول لودر رو نشون نده
+  const alreadyLoaded = correctImageUrl ? loadedImageCache.has(correctImageUrl) : false;
+
+  const [imageLoading, setImageLoading] = useState(!alreadyLoaded);
+  const [imageError, setImageError] = useState(false);
+
+  // اگه آدرس عکس عوض شد (مثلاً آیتم دیگه‌ای recycle شد تو همین اسلات)
+  // وضعیت رو با کش هماهنگ کن
+  useEffect(() => {
+    if (!correctImageUrl) return;
+    if (loadedImageCache.has(correctImageUrl)) {
+      setImageLoading(false);
+    } else {
+      setImageLoading(true);
+    }
+    setImageError(false);
+  }, [correctImageUrl]);
 
   const handleImageLoadStart = () => {
+    // اگه از قبل تو کش داریمش، لودر رو نشون نده (فقط تو بک‌گراند لود میشه ولی سریعه)
+    if (correctImageUrlRef.current && loadedImageCache.has(correctImageUrlRef.current)) {
+      return;
+    }
     setImageLoading(true);
     setImageError(false);
-    console.log(`🖼️ [Image Load Start] - Product: ${item.Code}`);
-    console.log(`📍 URL: ${correctImageUrl}`);
   };
 
   const handleImageLoadEnd = () => {
     setImageLoading(false);
-    console.log(`✅ [Image Load Success] - Product: ${item.Code}`);
+    if (correctImageUrlRef.current) {
+      loadedImageCache.add(correctImageUrlRef.current);
+    }
   };
 
   const handleImageError = () => {
     setImageError(true);
     setImageLoading(false);
-    console.error(`❌ [Image Load Error] - Product: ${item.Code}`);
   };
 
   const handleImageClick = () => {
@@ -126,7 +144,6 @@ export default function ProductCard({ item, onPress, onImagePress, isDemo }) {
               <View style={customStyles.imageLoaderOverlay}>
                 <ActivityIndicator size="large" color="#1e3a8a" />
                 <Text style={customStyles.imageLoadingText}>در حال بارگذاری تصویر...</Text>
-                <Text style={customStyles.serverInfoText}>از: {serverBaseUrl}</Text>
               </View>
             )}
 
@@ -138,12 +155,6 @@ export default function ProductCard({ item, onPress, onImagePress, isDemo }) {
               onLoadEnd={handleImageLoadEnd}
               onError={handleImageError}
             />
-
-            {imageLoading && (
-              <View style={customStyles.topRightLoader}>
-                <ActivityIndicator size="small" color="#ffffff" />
-              </View>
-            )}
           </>
         ) : (
           <View style={customStyles.placeholderContainer}>
@@ -151,7 +162,6 @@ export default function ProductCard({ item, onPress, onImagePress, isDemo }) {
             {imageError ? (
               <>
                 <Text style={customStyles.errorText}>تصویری تعریف نشده</Text>
-                <Text style={customStyles.serverInfoText}>سرور: {serverBaseUrl}</Text>
                 <TouchableOpacity
                   style={customStyles.retryButton}
                   onPress={() => {
@@ -254,19 +264,6 @@ const customStyles = {
     color: '#6b7280',
     fontWeight: '600',
   },
-  topRightLoader: {
-    position: 'absolute',
-    top: 8, right: 8,
-    backgroundColor: 'rgba(30, 58, 138, 0.95)',
-    borderRadius: 16,
-    padding: 8,
-    zIndex: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
   placeholderContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -295,13 +292,6 @@ const customStyles = {
     textAlign: 'center',
     fontStyle: 'italic',
   },
-  serverInfoText: {
-    marginTop: 4,
-    fontSize: 9,
-    color: '#6b7280',
-    textAlign: 'center',
-    fontFamily: 'monospace',
-  },
   retryButton: {
     marginTop: 8,
     backgroundColor: '#1e3a8a',
@@ -313,18 +303,5 @@ const customStyles = {
     color: '#ffffff',
     fontSize: 11,
     fontWeight: '700',
-  },
-  imageClickHint: {
-    position: 'absolute',
-    top: 8, left: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: 20,
-    width: 32, height: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 3,
-  },
-  imageClickHintText: {
-    fontSize: 16,
   },
 };
