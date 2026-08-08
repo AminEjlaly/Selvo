@@ -26,6 +26,7 @@ import {
   uploadCustomerPhotos
 } from '../api';
 import ManualLocationModal from '../components/ManualLocationModal';
+import { compressImage, compressImages } from '../services/imageCompression';
 import styles from '../styles/CustomerRegistrationStyles';
 
 const URMIA_LAT = 37.55012;
@@ -255,47 +256,49 @@ const handlePickPhotos = async () => {
       allowsMultipleSelection: true,
       quality: 0.7,
       selectionLimit: 10,
-      // 🔥 برای وب، base64 را فعال کنید
       base64: typeof window !== 'undefined' && window.document,
     });
 
     if (!result.canceled && result.assets.length > 0) {
       const isWeb = typeof window !== 'undefined' && window.document;
-      
-      const photoUris = result.assets.map(asset => {
-        // در وب از base64 استفاده کن
+
+      const rawUris = result.assets.map(asset => {
         if (isWeb && asset.base64) {
           return `data:image/jpeg;base64,${asset.base64}`;
         }
         return asset.uri;
       });
-      
-      setSelectedPhotos(prev => [...prev, ...photoUris]);
+
+      // 🔥 فشرده‌سازی همه‌ی عکس‌های انتخاب‌شده قبل از اضافه کردن به لیست
       setPhotoError('');
+      const compressedUris = await compressImages(rawUris);
+      setSelectedPhotos(prev => [...prev, ...compressedUris]);
     }
   } catch (error) {
     Alert.alert('خطا', 'خطا در دسترسی به گالری: ' + error.message);
   }
 };
   // ── ۴. عکاسی با دوربین ───────────────────────────────────────────────────
-  const handleTakePhoto = async () => {
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('خطا', 'دسترسی به دوربین رد شد.');
-        return;
-      }
-      const result = await ImagePicker.launchCameraAsync({
-        quality: 0.7,
-      });
-      if (!result.canceled && result.assets.length > 0) {
-        setSelectedPhotos(prev => [...prev, result.assets[0].uri]);
-        setPhotoError('');
-      }
-    } catch (error) {
-      Alert.alert('خطا', 'خطا در دسترسی به دوربین: ' + error.message);
+const handleTakePhoto = async () => {
+  try {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('خطا', 'دسترسی به دوربین رد شد.');
+      return;
     }
-  };
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      // 🔥 فشرده‌سازی عکس دوربین قبل از اضافه کردن به لیست
+      const compressedUri = await compressImage(result.assets[0].uri);
+      setSelectedPhotos(prev => [...prev, compressedUri]);
+      setPhotoError('');
+    }
+  } catch (error) {
+    Alert.alert('خطا', 'خطا در دسترسی به دوربین: ' + error.message);
+  }
+};
 
   // ── ۵. حذف یه عکس از لیست ───────────────────────────────────────────────
   const handleRemovePhoto = (indexToRemove) => {
