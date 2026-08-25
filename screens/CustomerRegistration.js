@@ -10,6 +10,7 @@ import {
   FlatList,
   Image,
   Modal,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -26,12 +27,13 @@ import {
   uploadCustomerPhotos
 } from '../api';
 import ManualLocationModal from '../components/ManualLocationModal';
-import { compressImage, compressImages } from '../services/imageCompression';
+import { compressImage, compressWebFile } from '../services/Imagecompression';
 import styles from '../styles/CustomerRegistrationStyles';
 
 const URMIA_LAT = 37.55012;
 const URMIA_LNG = 45.06872;
 const LOCATION_TIMEOUT_MS = 15000;
+const isWeb = Platform.OS === 'web';
 
 const validators = {
   firstName: (value) => {
@@ -243,62 +245,82 @@ const CustomerRegistration = ({ navigation }) => {
 
   // ── ۳. انتخاب عکس از گالری ───────────────────────────────────────────────
 // CustomerRegistration.js - اصلاح handlePickPhotos برای وب
+
+
+
 const handlePickPhotos = async () => {
+  if (isWeb) {
+    pickWebFiles();
+    return;
+  }
   try {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('خطا', 'دسترسی به گالری رد شد.');
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
       quality: 0.7,
       selectionLimit: 10,
-      base64: typeof window !== 'undefined' && window.document,
     });
-
     if (!result.canceled && result.assets.length > 0) {
-      const isWeb = typeof window !== 'undefined' && window.document;
-
-      const rawUris = result.assets.map(asset => {
-        if (isWeb && asset.base64) {
-          return `data:image/jpeg;base64,${asset.base64}`;
-        }
-        return asset.uri;
-      });
-
-      // 🔥 فشرده‌سازی همه‌ی عکس‌های انتخاب‌شده قبل از اضافه کردن به لیست
       setPhotoError('');
-      const compressedUris = await compressImages(rawUris);
-      setSelectedPhotos(prev => [...prev, ...compressedUris]);
+      const compressedUris = await Promise.all(
+        result.assets.map(a => compressImage(a.uri))
+      );
+      const items = compressedUris.map(uri => ({ kind: 'native', uri, previewUri: uri }));
+      setSelectedPhotos(prev => [...prev, ...items]);
     }
   } catch (error) {
     Alert.alert('خطا', 'خطا در دسترسی به گالری: ' + error.message);
   }
 };
-  // ── ۴. عکاسی با دوربین ───────────────────────────────────────────────────
+
+// 🔥 فقط وب: input فایل استاندارد
+const pickWebFiles = () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.multiple = true;
+  input.onchange = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setPhotoError('');
+    const compressed = await Promise.all(files.map(compressWebFile));
+    const items = compressed.map(c => ({
+      kind: 'web', blob: c.blob, name: c.name, previewUri: c.previewUri,
+    }));
+    setSelectedPhotos(prev => [...prev, ...items]);
+  };
+  input.click();
+};
+
 const handleTakePhoto = async () => {
+  if (isWeb) {
+    // رو وب معمولاً دوربین جدا نیازی نیست، همون input بالا با capture هم کار می‌کنه؛
+    // اگه لازم دارید دوربین جدا، بگید تا اضافه کنم
+    pickWebFiles();
+    return;
+  }
   try {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('خطا', 'دسترسی به دوربین رد شد.');
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 0.7,
-    });
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
     if (!result.canceled && result.assets.length > 0) {
-      // 🔥 فشرده‌سازی عکس دوربین قبل از اضافه کردن به لیست
       const compressedUri = await compressImage(result.assets[0].uri);
-      setSelectedPhotos(prev => [...prev, compressedUri]);
+      setSelectedPhotos(prev => [...prev, { kind: 'native', uri: compressedUri, previewUri: compressedUri }]);
       setPhotoError('');
     }
   } catch (error) {
     Alert.alert('خطا', 'خطا در دسترسی به دوربین: ' + error.message);
   }
 };
+
 
   // ── ۵. حذف یه عکس از لیست ───────────────────────────────────────────────
   const handleRemovePhoto = (indexToRemove) => {
@@ -320,35 +342,35 @@ const handleTakePhoto = async () => {
   };
 
   // ── ۷. اعتبارسنجی فرم با چک عکس ─────────────────────────────────────────
-  const validateForm = () => {
-    const newErrors = {
-      firstName: validators.firstName(formData.firstName),
-      lastName: validators.lastName(formData.lastName),
-      tel: validators.tel(formData.tel),
-      mobile: validators.mobile(formData.mobile),
-      addB: validators.addB(formData.addB),
-      tblo: validators.tblo(formData.tblo),
-      city: validators.city(formData.cityCode),
-      masir: validators.masir(formData.masirCode),
-      sanf: validators.sanf(formData.codeSF)
-    };
-    setErrors(newErrors);
-
-    if (!formData.tel.trim() && !formData.mobile.trim()) {
-      newErrors.tel = 'حداقل یکی از تلفن‌ها باید وارد شود';
-      newErrors.mobile = 'حداقل یکی از تلفن‌ها باید وارد شود';
-      setErrors(newErrors);
-      return false;
-    }
-
-    // ── چک عکس اجباری ──
-    if (selectedPhotos.length === 0) {
-      setPhotoError('ثبت حداقل یک عکس از مغازه الزامی است');
-      return false;
-    }
-
-    return !Object.values(newErrors).some(e => e !== null);
+const validateForm = () => {
+  const newErrors = {
+    firstName: validators.firstName(formData.firstName),
+    lastName: validators.lastName(formData.lastName),
+    tel: validators.tel(formData.tel),
+    mobile: validators.mobile(formData.mobile),
+    addB: validators.addB(formData.addB),
+    tblo: validators.tblo(formData.tblo),
+    city: validators.city(formData.cityCode),
+    masir: validators.masir(formData.masirCode),
+    sanf: validators.sanf(formData.codeSF)
   };
+  setErrors(newErrors);
+
+  if (!formData.tel.trim() && !formData.mobile.trim()) {
+    newErrors.tel = 'حداقل یکی از تلفن‌ها باید وارد شود';
+    newErrors.mobile = 'حداقل یکی از تلفن‌ها باید وارد شود';
+    setErrors(newErrors);
+    return false;
+  }
+
+  // 🔥 عکس فقط تو موبایل اجباریه، رو وب اصلاً نمایش داده نمیشه
+  if (!isWeb && selectedPhotos.length === 0) {
+    setPhotoError('ثبت حداقل یک عکس از مغازه الزامی است');
+    return false;
+  }
+
+  return !Object.values(newErrors).some(e => e !== null);
+};
 
   // ── ۸. handleSubmit ───────────────────────────────────────────────────────
 const handleSubmit = async () => {
@@ -399,10 +421,11 @@ const doRegister = async (currentFormData) => {  // ← پارامتر اضاف�
   };
 
   // ── ۹. ثبت نهایی + آپلود عکس ─────────────────────────────────────────────
-  const proceedWithRegistration = async (data) => {
-    const buyerCode = await generateBuyerCode(data.cityCode);
+const proceedWithRegistration = async (data) => {
+  const buyerCode = await generateBuyerCode(data.cityCode);
 
-    // ── ۱. اول آپلود عکس ──────────────────────────────
+  // 🔥 آپلود عکس فقط تو موبایل - رو وب رد میشه
+  if (!isWeb && selectedPhotos.length > 0) {
     setUploadingPhotos(true);
     try {
       const uploadResult = await uploadCustomerPhotos(buyerCode, selectedPhotos, deviceInfo);
@@ -416,34 +439,34 @@ const doRegister = async (currentFormData) => {  // ← پارامتر اضاف�
     } finally {
       setUploadingPhotos(false);
     }
+  }
 
-    // ── ۲. بعد ثبت مشتری — نام و نام‌خانوادگی یکی می‌شن و به سرور می‌رن ──────────
-    const customerData = {
-      buyerCode,
-      name: getFullName(data),
-      tel: data.tel.trim(),
-      mobile: data.mobile.trim(),
-      addB: data.addB.trim(),
-      cityCode: data.cityCode,
-      cityName: data.cityName,
-      tblo: data.tblo.trim(),
-      skh: data.skh,
-      codeSF: data.codeSF,
-      nameSF: data.nameSF,
-      kindM: data.kindM,
-      onvan: data.onvan,
-      lat: data.lat,
-      lng: data.lng,
-      masirCode: data.masirCode,
-      masirName: data.masirName
-    };
-
-    await createCompleteCustomer(customerData);
-
-    Alert.alert('موفقیت', 'مشتری با موفقیت ثبت شد', [
-      { text: 'باشه', onPress: () => navigation.goBack() }
-    ]);
+  const customerData = {
+    buyerCode,
+    name: getFullName(data),
+    tel: data.tel.trim(),
+    mobile: data.mobile.trim(),
+    addB: data.addB.trim(),
+    cityCode: data.cityCode,
+    cityName: data.cityName,
+    tblo: data.tblo.trim(),
+    skh: data.skh,
+    codeSF: data.codeSF,
+    nameSF: data.nameSF,
+    kindM: data.kindM,
+    onvan: data.onvan,
+    lat: data.lat,
+    lng: data.lng,
+    masirCode: data.masirCode,
+    masirName: data.masirName
   };
+
+  await createCompleteCustomer(customerData);
+
+  Alert.alert('موفقیت', 'مشتری با موفقیت ثبت شد', [
+    { text: 'باشه', onPress: () => navigation.goBack() }
+  ]);
+};
 
   // ── ۱۰. تأیید مودال لوکیشن ───────────────────────────────────────────────
 const handleLocationConfirm = async (coords) => {
@@ -773,8 +796,8 @@ const handleLocationConfirm = async (coords) => {
         {errors.sanf ? <Text style={styles.errorText}>{errors.sanf}</Text> : null}
       </View>
 
-      {/* ── بخش عکس مغازه ── */}
-      <PhotoSection />
+      {/* ── بخش عکس مغازه - فقط موبایل ── */}
+{!isWeb && <PhotoSection />}
 
       {/* ── دکمه‌های ثبت ── */}
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>

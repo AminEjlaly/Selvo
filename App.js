@@ -654,7 +654,7 @@ useEffect(() => {
               <Stack.Screen name="MapBuyer" component={MapBuyerScreen} options={{ title: "نقشه مشتری‌ها" }} initialParams={{ userType, buyerCode }} />
               <Stack.Screen name="Invoices" component={InvoicesScreen} options={{ title: "فاکتورها" }} initialParams={{ userType, buyerCode }} />
               <Stack.Screen name="EditInvoice" component={EditInvoiceScreen} options={{ title: "ویرایش فاکتور", headerRight: null }} initialParams={{ userType, buyerCode }} />
-              <Stack.Screen name="OrderReport" component={OrderReportScreen} options={{ title: "گزارش سفارشات" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="OrderReport" component={OrderReportScreen} options={{ title: "گزارش مانده حساب" }} initialParams={{ userType, buyerCode }} />
               <Stack.Screen name="Chat" component={ChatScreen} options={{ title: "پیام رسانی" }} initialParams={{ userType, buyerCode }} />
               <Stack.Screen name="SellerPerformance" component={SellerPerformanceScreen} options={{ title: "عملکرد فروشنده" }} initialParams={{ userType, buyerCode }} />
               <Stack.Screen name="CustomerRequests" component={CustomerRequestsScreen} options={{ title: "درخواست‌های من" }} initialParams={{ userType, buyerCode }} />

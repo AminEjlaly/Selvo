@@ -3042,78 +3042,71 @@ export const getVisitorLocations = async (visitorCode, date) => {
 };
 //_________________________________________________________________________________visitor location for buss end
 // api.js - نسخه نهایی و سازگار با هر دو پلتفرم
-export const uploadCustomerPhotos = async (buyerCode, photoUris, deviceInfo = '') => {
+// api.js - نسخه با timeout + retry + آپلود تکی
+export const uploadSinglePhoto = async (buyerCode, photo, index, deviceInfo = '') => {
+  const token = await AsyncStorage.getItem('token');
+  const baseUrl = await getServerUrl();
+  const isWeb = typeof window !== 'undefined' && window.document;
+
+  const formData = new FormData();
+  formData.append('buyerCode', String(buyerCode));
+  if (deviceInfo) formData.append('deviceInfo', deviceInfo);
+
+  if (isWeb) {
+    // photo باید از الان به بعد { blob, name } باشه (خروجی canvas.toBlob)
+    formData.append('photos', photo.blob, photo.name || `photo_${index}.jpg`);
+  } else {
+    const ext = photo.uri.split('.').pop().toLowerCase() || 'jpg';
+    formData.append('photos', {
+      uri: photo.uri,
+      type: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+      name: `photo_${index}.${ext}`,
+    });
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s per photo
+
   try {
-    const token = await AsyncStorage.getItem('token');
-    const baseUrl = await getServerUrl();
-    
-    // تشخیص پلتفرم
-    const isWeb = typeof window !== 'undefined' && window.document;
-    
-    const formData = new FormData();
-    formData.append('buyerCode', String(buyerCode));
-    
-    if (deviceInfo) {
-      formData.append('deviceInfo', deviceInfo);
-    }
-
-    for (let i = 0; i < photoUris.length; i++) {
-      const uri = photoUris[i];
-      
-      if (isWeb) {
-        // ========== وب ==========
-        // اگر uri با data: شروع می‌شود (base64)
-        if (uri.startsWith('data:')) {
-          const blob = dataURItoBlob(uri);
-          const mimeType = blob.type || 'image/jpeg';
-          const ext = mimeType.split('/')[1] || 'jpg';
-          const file = new File([blob], `photo_${i}.${ext}`, { type: mimeType });
-          formData.append('photos', file);
-        } else {
-          // آدرس معمولی
-          const response = await fetch(uri);
-          const blob = await response.blob();
-          const mimeType = blob.type || 'image/jpeg';
-          const ext = mimeType.split('/')[1] || 'jpg';
-          const file = new File([blob], `photo_${i}.${ext}`, { type: mimeType });
-          formData.append('photos', file);
-        }
-      } else {
-        // ========== اندروید / موبایل ==========
-        const ext = uri.split('.').pop().toLowerCase() || 'jpg';
-        formData.append('photos', {
-          uri: uri,
-          type: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
-          name: `photo_${i}.${ext}`
-        });
-      }
-    }
-
-    // ارسال درخواست (سازگار با هر دو پلتفرم)
     const response = await fetch(`${baseUrl}/api/customers/photos`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        // 🔥 مهم: Content-Type را تنظیم نکنید
-      },
+      headers: { Authorization: `Bearer ${token}` },
       body: formData,
+      signal: controller.signal,
     });
-
+    clearTimeout(timeoutId);
     const data = await response.json();
-
     if (!response.ok || !data.success) {
-      throw new Error(data.message || 'خطا در آپلود عکس‌ها');
+      throw new Error(data.message || 'خطا در آپلود عکس');
     }
-
     return data;
-
   } catch (err) {
-    console.error('❌ خطا در آپلود عکس:', err);
-    if (err.message === 'Network request failed') {
-      throw new Error('ارتباط با سرور برقرار نشد');
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('آپلود عکس زمان زیادی طول کشید. دوباره امتحان کنید.');
     }
     throw err;
   }
+};
+
+// آپلود همه با retry ساده و گزارش پیشرفت
+export const uploadCustomerPhotos = async (buyerCode, photos, deviceInfo, onProgress) => {
+  const results = [];
+  for (let i = 0; i < photos.length; i++) {
+    let attempt = 0;
+    while (attempt < 2) { // یک بار retry
+      try {
+        const res = await uploadSinglePhoto(buyerCode, photos[i], i, deviceInfo);
+        results.push(res);
+        onProgress?.(i + 1, photos.length);
+        break;
+      } catch (e) {
+        attempt++;
+        if (attempt >= 2) throw new Error(`آپلود عکس ${i + 1} ناموفق بود: ${e.message}`);
+      }
+    }
+  }
+  return { success: true, data: results };
 };
 
 // تابع کمکی برای وب (تبدیل data URI به Blob)
