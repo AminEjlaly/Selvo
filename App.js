@@ -647,7 +647,7 @@ useEffect(() => {
               <Stack.Screen name="Cart" component={CartScreen} options={{ title: "سبد خرید" }} initialParams={{ userType, buyerCode }} />
               <Stack.Screen name="ProductGroups" component={ProductGroupsScreen} options={{ title: "گروه کالاها" }} initialParams={{ userType, buyerCode }} />
               <Stack.Screen name="ProductList" component={ProductListScreen} options={{ title: "کالاها" }} initialParams={{ userType, buyerCode }} />
-              <Stack.Screen name="Search" component={ProductListScreen} options={{ title: "جستجو" }} initialParams={{ userType, buyerCode }} />
+              <Stack.Screen name="Search" component={ProductListScreen} options={{ headerShown: false }} initialParams={{ userType, buyerCode }} />
               <Stack.Screen name="Report" component={ReportScreen} options={{ title: "گزارش فاکتورها" }} initialParams={{ userType, buyerCode }} />
               <Stack.Screen name="BuyerList" component={BuyerListScreen} options={{ title: "لیست مشتری‌ها" }} initialParams={{ userType, buyerCode }} />
               <Stack.Screen name="CustomerRegistration" component={CustomerRegistration} options={{ title: "تعریف مشتری جدید" }} initialParams={{ userType, buyerCode }} />

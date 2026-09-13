@@ -787,20 +787,49 @@ export const testServerConnection = async () => {
 };
 
 // --- گرفتن فاکتورهای بازه‌ای ---
-export const getFactorReport = async (moen, startDate, endDate) => {
+export const getFactorReport = async ({ moen, startDate, endDate, reportType } = {}) => {
   try {
     const headers = await getAuthHeaders();
     const baseUrl = await getServerUrl();
 
+    const body = { moen };
+    if (reportType === 'overall') {
+      body.reportType = 'overall';
+    } else {
+      body.startDate = startDate;
+      body.endDate = endDate;
+    }
+
     const res = await fetch(`${baseUrl}/api/factor/report`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ moen, startDate, endDate }),
+      body: JSON.stringify(body),
     });
 
-    const data = await handleResponse(res);
+    const result = await handleResponse(res);
 
-    return data;
+    // 🔥 نرمال‌سازی: چه handleResponse آرایه برگردونه چه آبجکت کامل {success, data, dateRange}،
+    // خروجی نهایی همیشه یک شکل ثابت داشته باشه
+    let normalizedData;
+    let normalizedDateRange;
+
+    if (Array.isArray(result)) {
+      // یعنی handleResponse خودش data.data رو استخراج کرده و فقط آرایه داده
+      normalizedData = result;
+      normalizedDateRange =
+        reportType === 'overall'
+          ? { reportType: 'overall' }
+          : { startDate, endDate, reportType: 'range' };
+    } else {
+      // یعنی آبجکت کامل سرور دست‌نخورده برگشته
+      normalizedData = result.data || [];
+      normalizedDateRange = result.dateRange || null;
+    }
+
+    return {
+      data: normalizedData,
+      dateRange: normalizedDateRange,
+    };
   } catch (err) {
     if (err.message === 'Network request failed') {
       throw new Error('ارتباط با سرور برقرار نشد');
