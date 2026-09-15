@@ -529,31 +529,31 @@ const handleLocationConfirm = async (coords) => {
         )}
       </View>
 
-      {/* پیش‌نمایش عکس‌ها */}
-      {selectedPhotos.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-          {selectedPhotos.map((uri, index) => (
-            <View key={index} style={{ marginLeft: 8, position: 'relative' }}>
-              <Image
-                source={{ uri }}
-                style={{ width: 80, height: 80, borderRadius: 8, backgroundColor: '#E5E7EB' }}
-              />
-              {/* دکمه حذف */}
-              <TouchableOpacity
-                onPress={() => handleRemovePhoto(index)}
-                style={{
-                  position: 'absolute', top: -6, right: -6,
-                  width: 22, height: 22, borderRadius: 11,
-                  backgroundColor: '#EF4444', justifyContent: 'center', alignItems: 'center',
-                  borderWidth: 2, borderColor: '#fff'
-                }}
-              >
-                <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold', lineHeight: 14 }}>✕</Text>
-              </TouchableOpacity>
-            </View>
-          ))}
-        </ScrollView>
-      )}
+ {/* پیش‌نمایش عکس‌ها */}
+{selectedPhotos.length > 0 && (
+  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+    {selectedPhotos.map((item, index) => (
+      <View key={index} style={{ marginLeft: 8, position: 'relative' }}>
+        <Image
+          source={{ uri: item.previewUri }}
+          style={{ width: 80, height: 80, borderRadius: 8, backgroundColor: '#E5E7EB' }}
+        />
+        {/* دکمه حذف */}
+        <TouchableOpacity
+          onPress={() => handleRemovePhoto(index)}
+          style={{
+            position: 'absolute', top: -6, right: -6,
+            width: 22, height: 22, borderRadius: 11,
+            backgroundColor: '#EF4444', justifyContent: 'center', alignItems: 'center',
+            borderWidth: 2, borderColor: '#fff'
+          }}
+        >
+          <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold', lineHeight: 14 }}>✕</Text>
+        </TouchableOpacity>
+      </View>
+    ))}
+  </ScrollView>
+)}
 
       {/* دکمه‌های انتخاب */}
       <View style={{ flexDirection: 'row', gap: 8 }}>
